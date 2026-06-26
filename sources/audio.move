@@ -12,7 +12,7 @@
 /// - Witness-gated creation: only packages that can produce an `Ingester` witness
 ///   type (with `drop`) can create `Audio`. The `Audio` records which ingester
 ///   attested it, so multiple ingester implementations can coexist.
-module audio::audio;
+module miso_audio::audio;
 
 use std::string::String;
 use std::type_name::{TypeName, with_defining_ids};

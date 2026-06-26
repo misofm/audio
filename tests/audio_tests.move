@@ -1,7 +1,7 @@
 #[test_only]
-module audio::audio_tests;
+module miso_audio::audio_tests;
 
-use audio::audio as af;
+use miso_audio::audio as af;
 use std::unit_test::assert_eq;
 use std::type_name;
 use ori::walrus_data;
@@ -92,58 +92,58 @@ fun test_duration_ms() {
 
 // === Error Conditions ===
 
-#[test, expected_failure(abort_code = EInvalidChannels, location = audio::audio)]
+#[test, expected_failure(abort_code = EInvalidChannels, location = miso_audio::audio)]
 fun test_new_zero_channels() {
     af::new(b"flac".to_string(), 0, 16, 44100, 1000, test_digest(), walrus_data::new_blob(1), TestIngesterWitness());
 }
 
-#[test, expected_failure(abort_code = EInvalidBitDepth, location = audio::audio)]
+#[test, expected_failure(abort_code = EInvalidBitDepth, location = miso_audio::audio)]
 fun test_new_invalid_bit_depth_12() {
     af::new(b"flac".to_string(), 2, 12, 44100, 1000, test_digest(), walrus_data::new_blob(1), TestIngesterWitness());
 }
 
-#[test, expected_failure(abort_code = EInvalidBitDepth, location = audio::audio)]
+#[test, expected_failure(abort_code = EInvalidBitDepth, location = miso_audio::audio)]
 fun test_new_invalid_bit_depth_0() {
     af::new(b"flac".to_string(), 2, 0, 44100, 1000, test_digest(), walrus_data::new_blob(1), TestIngesterWitness());
 }
 
-#[test, expected_failure(abort_code = EInvalidSampleRate, location = audio::audio)]
+#[test, expected_failure(abort_code = EInvalidSampleRate, location = miso_audio::audio)]
 fun test_new_zero_sample_rate() {
     af::new(b"flac".to_string(), 2, 16, 0, 1000, test_digest(), walrus_data::new_blob(1), TestIngesterWitness());
 }
 
-#[test, expected_failure(abort_code = EInvalidSamples, location = audio::audio)]
+#[test, expected_failure(abort_code = EInvalidSamples, location = miso_audio::audio)]
 fun test_new_zero_samples() {
     af::new(b"flac".to_string(), 2, 16, 44100, 0, test_digest(), walrus_data::new_blob(1), TestIngesterWitness());
 }
 
-#[test, expected_failure(abort_code = ESamplesOverflow, location = audio::audio)]
+#[test, expected_failure(abort_code = ESamplesOverflow, location = miso_audio::audio)]
 fun test_new_samples_overflow() {
     af::new(b"flac".to_string(), 2, 16, 44100, MAX_SAMPLES + 1, test_digest(), walrus_data::new_blob(1), TestIngesterWitness());
 }
 
-#[test, expected_failure(abort_code = EEmptyFormat, location = audio::audio)]
+#[test, expected_failure(abort_code = EEmptyFormat, location = miso_audio::audio)]
 fun test_new_empty_format() {
     af::new(b"".to_string(), 2, 16, 44100, 1000, test_digest(), walrus_data::new_blob(1), TestIngesterWitness());
 }
 
-#[test, expected_failure(abort_code = EFormatTooLong, location = audio::audio)]
+#[test, expected_failure(abort_code = EFormatTooLong, location = miso_audio::audio)]
 fun test_new_format_too_long() {
     // 17 chars > MAX_FORMAT_LENGTH (16)
     af::new(b"aaaaaaaaaaaaaaaaa".to_string(), 2, 16, 44100, 1000, test_digest(), walrus_data::new_blob(1), TestIngesterWitness());
 }
 
-#[test, expected_failure(abort_code = EInvalidFormatChar, location = audio::audio)]
+#[test, expected_failure(abort_code = EInvalidFormatChar, location = miso_audio::audio)]
 fun test_new_format_uppercase() {
     af::new(b"FLAC".to_string(), 2, 16, 44100, 1000, test_digest(), walrus_data::new_blob(1), TestIngesterWitness());
 }
 
-#[test, expected_failure(abort_code = EInvalidFormatChar, location = audio::audio)]
+#[test, expected_failure(abort_code = EInvalidFormatChar, location = miso_audio::audio)]
 fun test_new_format_with_slash() {
     af::new(b"audio/flac".to_string(), 2, 16, 44100, 1000, test_digest(), walrus_data::new_blob(1), TestIngesterWitness());
 }
 
-#[test, expected_failure(abort_code = EInvalidDigestLength, location = audio::audio)]
+#[test, expected_failure(abort_code = EInvalidDigestLength, location = miso_audio::audio)]
 fun test_new_wrong_digest_length() {
     // 1-byte digest != 32
     af::new(b"flac".to_string(), 2, 16, 44100, 1000, x"00", walrus_data::new_blob(1), TestIngesterWitness());

@@ -4,6 +4,30 @@
 [move]
 version = 4
 
+[pinned.mainnet.MoveStdlib]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "718ae563a42fb4ba0d055588f81c704dcef58c25" }
+use_environment = "mainnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.mainnet.Sui]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "718ae563a42fb4ba0d055588f81c704dcef58c25" }
+use_environment = "mainnet"
+manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
+deps = { MoveStdlib = "MoveStdlib" }
+
+[pinned.mainnet.miso_audio]
+source = { root = true }
+use_environment = "mainnet"
+manifest_digest = "60B477E259AA17423C502EF6D0B95AB5AA877C5E09183FA0068205A25081BA00"
+deps = { ori = "ori", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.ori]
+source = { git = "https://github.com/unconfirmedlabs/ori.git", subdir = "move", rev = "84d5da270e5860b144961dd4665690238b49560c" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
 [pinned.testnet.MoveStdlib]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "718ae563a42fb4ba0d055588f81c704dcef58c25" }
 use_environment = "testnet"
@@ -16,7 +40,7 @@ use_environment = "testnet"
 manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
 deps = { MoveStdlib = "MoveStdlib" }
 
-[pinned.testnet.audio]
+[pinned.testnet.miso_audio]
 source = { root = true }
 use_environment = "testnet"
 manifest_digest = "4910138CD1478FFEC85613E3A7162F34BD13F97BC4460312A67892CC9D819E65"

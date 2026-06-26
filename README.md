@@ -1,11 +1,11 @@
-# audio
+# miso-audio
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Move](https://img.shields.io/badge/Move-2024-black.svg)](https://docs.sui.io/concepts/sui-move-concepts)
 
 > Verified audio as a composable on-chain primitive for [Sui](https://sui.io).
 
-`audio` defines a single value type — `Audio` — that carries an audio file's technical metadata together with the identity of the **ingester** that attested it. It is intentionally minimal and domain-agnostic: any protocol can embed an `Audio` (a recording's master, a podcast episode, a video's audio track), and any number of ingester implementations can mint one.
+`miso_audio` defines a single value type — `Audio` — that carries an audio file's technical metadata together with the identity of the **ingester** that attested it. It is intentionally minimal and domain-agnostic: any protocol can embed an `Audio` (a recording's master, a podcast episode, a video's audio track), and any number of ingester implementations can mint one.
 
 ## Design
 
@@ -30,7 +30,7 @@ Add to your `Move.toml`:
 
 ```toml
 [dependencies]
-audio = { git = "https://github.com/misonetwork/audio.git", rev = "main" }
+miso_audio = { git = "https://github.com/misonetwork/miso-audio.git", rev = "main" }
 ```
 
 ## Usage
@@ -38,7 +38,7 @@ audio = { git = "https://github.com/misonetwork/audio.git", rev = "main" }
 An ingester mints `Audio` by passing a witness it alone can construct:
 
 ```move
-use audio::audio;
+use miso_audio::audio;
 
 // `Ingester` is a `drop` witness type your package defines and gates.
 public fun ingest(/* … */ , witness: MyIngester): audio::Audio {
