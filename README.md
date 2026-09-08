@@ -5,7 +5,7 @@
 
 > Verified audio as a composable on-chain primitive for [Sui](https://sui.io).
 
-`miso_audio` defines a single value type — `Audio` — that carries an audio file's technical metadata together with the identity of the **ingester** that attested it. It is intentionally minimal and domain-agnostic: any protocol can embed an `Audio` (a recording's master, a podcast episode, a video's audio track), and any number of ingester implementations can mint one.
+`audio` defines a single value type — `Audio` — that carries an audio file's technical metadata together with the identity of the **ingester** that attested it. It is intentionally minimal and domain-agnostic: any protocol can embed an `Audio` (a recording's master, a podcast episode, a video's audio track), and any number of ingester implementations can mint one.
 
 ## Design
 
@@ -30,7 +30,7 @@ Add to your `Move.toml`:
 
 ```toml
 [dependencies]
-miso_audio = { git = "https://github.com/misonetwork/miso-audio.git", rev = "main" }
+audio = { git = "https://github.com/misofm/audio.git", rev = "main" }
 ```
 
 ## Usage
@@ -38,7 +38,7 @@ miso_audio = { git = "https://github.com/misonetwork/miso-audio.git", rev = "mai
 An ingester mints `Audio` by passing a witness it alone can construct:
 
 ```move
-use miso_audio::audio;
+use audio::audio;
 
 // `Ingester` is a `drop` witness type your package defines and gates.
 public fun ingest(/* … */ , witness: MyIngester): audio::Audio {

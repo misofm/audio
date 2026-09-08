@@ -1,9 +1,9 @@
-# Security Audit — `miso_audio`
+# Security Audit — `audio`
 
 **Revision:** not a git repository (working tree as of audit date) · **Date:** 2026-08-23 ·
 **Toolchain:** sui 1.77.2
 
-Audit of `miso_audio`, the witness-gated `Audio` value primitive (verified
+Audit of `audio`, the witness-gated `Audio` value primitive (verified
 format/PCM metadata + Walrus blob reference). Verdict: **safe — no findings.**
 
 ## What it does
