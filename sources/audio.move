@@ -1,7 +1,7 @@
 // Copyright (c) Miso Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-/// A verified audio file with technical metadata — a standalone, wrapped
+/// An audio file with self-attested technical metadata — a standalone, wrapped
 /// primitive that any protocol can embed (e.g. as a recording's master).
 ///
 /// ### Key Features:
@@ -9,23 +9,19 @@
 /// - Format (codec/container, e.g. `flac`) and PCM parameters (channels, bit
 ///   depth, sample rate, samples)
 /// - Walrus blob ID for storage reference
-/// - Witness-gated creation: only packages that can produce an `Ingester` witness
-///   type (with `drop`) can create `Audio`. The `Audio` records which ingester
-///   attested it, so multiple ingester implementations can coexist.
+/// - Permissionless creation from caller-supplied metadata via `new`.
+/// Metadata is structurally validated; blob contents and PCM digests are not verified.
 module audio::audio;
 
 use std::string::String;
-use std::type_name::{TypeName, with_defining_ids};
 use sui::event::emit;
-use ori::walrus_data::WalrusData;
+use ori::data::WalrusBlob;
 
 // === Structs ===
 
-/// A verified audio file with technical metadata.
-/// Can only be created by a package that provides an ingester witness.
-public struct Audio has drop, store {
-    /// The ingester that attested this audio.
-    ingester: TypeName,
+/// An audio file with caller-supplied technical metadata.
+/// Copying duplicates metadata and a blob reference, not the underlying audio bytes.
+public struct Audio has copy, drop, store {
     /// Codec/container of the stored blob, as a bare lowercase short name
     /// (e.g. `flac`, `wav`, `opus`). No `audio/` prefix — the type is already audio.
     format: String,
@@ -33,21 +29,21 @@ public struct Audio has drop, store {
     channels: u8,
     /// Bits per sample (8, 16, 24, or 32).
     bit_depth: u8,
-    /// Sample rate in hertz (e.g., 44100, 48000, 96000).
+    /// Supported integer PCM sample rate in hertz (44.1/48 kHz families through 384 kHz).
     sample_rate_hz: u32,
     /// Total number of PCM samples in the audio.
     samples: u64,
-    /// `blake2b-256` digest of the canonical decoded PCM (codec-independent
-    /// content fingerprint). 32 bytes.
+    /// Unkeyed BLAKE3 digest of the canonical decoded PCM (codec-independent
+    /// content fingerprint), using the default 32-byte output.
     pcm_digest: vector<u8>,
-    /// Walrus data reference for the audio (must be a blob).
-    data: WalrusData,
+    /// Standalone Walrus blob reference for the audio.
+    data: WalrusBlob,
 }
 
 // === Events ===
 
 /// Emitted when an audio file is ingested.
-public struct AudioIngestedEvent<phantom Ingester: drop> has copy, drop {
+public struct AudioIngestedEvent has copy, drop {
     blob_id: u256,
     format: String,
     channels: u8,
@@ -60,12 +56,14 @@ public struct AudioIngestedEvent<phantom Ingester: drop> has copy, drop {
 
 // === Constants ===
 
-/// Maximum number of samples to prevent overflow in duration_ms (u64::MAX / 1_000).
-const MAX_SAMPLES: u64 = 18_446_744_073_709_551;
 /// Maximum length of a format short name in bytes (generous; real names are <=8).
 const MAX_FORMAT_LENGTH: u64 = 16;
-/// Required length of the PCM digest in bytes (blake2b-256).
+/// Required length of the PCM digest in bytes (BLAKE3).
 const PCM_DIGEST_LENGTH: u64 = 32;
+/// Supported sample rates in hertz: 44.1/48 kHz and their successive doublings.
+const SUPPORTED_SAMPLE_RATES: vector<u32> = vector[
+    44_100, 48_000, 88_200, 96_000, 176_400, 192_000, 352_800, 384_000,
+];
 
 // === Errors ===
 
@@ -74,33 +72,30 @@ const PCM_DIGEST_LENGTH: u64 = 32;
 const EInvalidChannels: u64 = 21;
 /// Bit depth must be 8, 16, 24, or 32.
 const EInvalidBitDepth: u64 = 22;
-/// Sample rate must be greater than zero.
+/// Sample rate must be one of the supported 44.1/48 kHz family rates.
 const EInvalidSampleRate: u64 = 23;
 /// Audio must have at least one sample.
 const EInvalidSamples: u64 = 24;
-/// Sample count would cause overflow in duration calculation.
-const ESamplesOverflow: u64 = 25;
 /// Format must not be empty.
 const EEmptyFormat: u64 = 26;
 /// Format exceeds maximum length.
 const EFormatTooLong: u64 = 27;
 /// Format contains an invalid character (must be lowercase `a`-`z` or `0`-`9`).
 const EInvalidFormatChar: u64 = 28;
-/// PCM digest must be exactly 32 bytes (blake2b-256).
+/// PCM digest must be exactly 32 bytes (BLAKE3).
 const EInvalidDigestLength: u64 = 29;
 // === Public Functions ===
 
-/// Creates a new verified audio. The `Ingester` witness type gates creation —
-/// only the package that defines the witness can call this function.
-public fun new<Ingester: drop>(
+/// Creates audio from the caller's self-attested metadata.
+/// Validates metadata shape and numeric bounds, without verifying the underlying bytes.
+public fun new(
     format: String,
     channels: u8,
     bit_depth: u8,
     sample_rate_hz: u32,
     samples: u64,
     pcm_digest: vector<u8>,
-    data: WalrusData,
-    _ingester: Ingester,
+    data: WalrusBlob,
 ): Audio {
     // Format must be a non-empty, lowercase alphanumeric short name (e.g. `flac`).
     let format_bytes = format.as_bytes();
@@ -110,27 +105,20 @@ public fun new<Ingester: drop>(
         format_bytes.all!(|c| (*c >= 0x61 && *c <= 0x7a) || (*c >= 0x30 && *c <= 0x39)),
         EInvalidFormatChar,
     );
-    // PCM digest must be a 32-byte blake2b-256 hash.
+    // PCM digest must be a 32-byte BLAKE3 hash.
     assert!(pcm_digest.length() == PCM_DIGEST_LENGTH, EInvalidDigestLength);
     // Assert the channels are greater than 0.
     assert!(channels > 0, EInvalidChannels);
     // Assert the bit depth is 8, 16, 24, or 32.
     assert!(vector[8, 16, 24, 32].contains(&bit_depth), EInvalidBitDepth);
-    // Assert the sample rate is greater than 0.
-    assert!(sample_rate_hz > 0, EInvalidSampleRate);
+    let supported_sample_rates = SUPPORTED_SAMPLE_RATES;
+    assert!(supported_sample_rates.contains(&sample_rate_hz), EInvalidSampleRate);
     // Assert the samples are greater than 0.
     assert!(samples > 0, EInvalidSamples);
-    // Assert the samples are less than or equal to the maximum number of samples.
-    assert!(samples <= MAX_SAMPLES, ESamplesOverflow);
 
-    // Assert the data is a blob, not a patch quilt.
-    // Source files should be lossless, and are typically 10-20MB, which doesn't benefit from quilt effiency.
-    // Storing audio files as blobs makes them directly addressable.
-    data.assert_is_blob();
+    let duration_ms = samples.mul_div(1_000, sample_rate_hz as u64);
 
-    let duration_ms = samples * 1_000 / (sample_rate_hz as u64);
-
-    emit(AudioIngestedEvent<Ingester> {
+    emit(AudioIngestedEvent {
         blob_id: data.blob_id(),
         format,
         channels,
@@ -142,7 +130,6 @@ public fun new<Ingester: drop>(
     });
 
     Audio {
-        ingester: with_defining_ids<Ingester>(),
         format,
         channels,
         bit_depth,
@@ -175,20 +162,16 @@ public fun samples(self: &Audio): u64 {
     self.samples
 }
 
-/// Returns a reference to the Walrus data.
-public fun data(self: &Audio): &WalrusData {
+/// Returns a reference to the standalone Walrus blob.
+public fun data(self: &Audio): &WalrusBlob {
     &self.data
 }
 
 /// Returns the duration of the audio in milliseconds (truncated).
-/// Multiplies first to preserve precision before integer division.
+/// Uses a u128 intermediate product to avoid overflow, rounding down.
+/// All supported sample rates keep the result within u64 for any sample count.
 public fun duration_ms(self: &Audio): u64 {
-    self.samples * 1_000 / (self.sample_rate_hz as u64)
-}
-
-/// Returns a reference to the ingester type name.
-public fun ingester_type(self: &Audio): &TypeName {
-    &self.ingester
+    self.samples.mul_div(1_000, self.sample_rate_hz as u64)
 }
 
 /// Returns the codec/container format of the stored blob (e.g. `flac`).
@@ -196,7 +179,12 @@ public fun format(self: &Audio): &String {
     &self.format
 }
 
-/// Returns the `blake2b-256` digest of the canonical decoded PCM (32 bytes).
+/// Returns the `BLAKE3` digest of the canonical decoded PCM (32 bytes).
 public fun pcm_digest(self: &Audio): &vector<u8> {
     &self.pcm_digest
+}
+
+#[test_only]
+public fun ingested_event_duration_ms(event: &AudioIngestedEvent): u64 {
+    event.duration_ms
 }

@@ -1,5 +1,15 @@
 # Security Audit — `audio`
 
+> **Historical report — superseded for V1 (2026-09-14).** The report below
+> predates the permissionless `new()` constructor and is not an audit of the
+> current package. V1 removes witness gating, ingester identity, and the event's
+> ingester type parameter. It retains structural metadata validation, but does
+> not verify blob contents or PCM digests. Nautilus-attested audio will live in a
+> separate package. The prior witness-only creation claim and “safe — no findings”
+> verdict must not be treated as assurances about V1. Duration now uses
+> `u64::mul_div` with a u128 intermediate and the sample-rate whitelist; the
+> historical `MAX_SAMPLES` multiplication limit has been removed.
+
 **Revision:** not a git repository (working tree as of audit date) · **Date:** 2026-08-23 ·
 **Toolchain:** sui 1.77.2
 
@@ -10,7 +20,7 @@ format/PCM metadata + Walrus blob reference). Verdict: **safe — no findings.**
 
 `audio::new<Ingester: drop>` (`audio.move:95`) is the only constructor. It
 validates every embedded field, stamps the ingester's TypeName
-(`with_defining_ids<Ingester>()`, `:145`), emits `AudioIngestedEvent`, and
+  (`with_defining_ids<Ingester>()`, `:140`), emits `AudioIngestedEvent`, and
 returns an `Audio` — a `drop + store` value (not `key`), so it is an
 embeddable primitive, not a standalone object; there is no ownership surface
 to attack at this layer.
@@ -37,10 +47,11 @@ impersonating a trusted ingester.
   parsers. Digest: exactly 32 bytes (`:114`). Channels > 0 (`:116`), bit
   depth ∈ {8,16,24,32} (`:118`), sample rate > 0 (`:120` — also prevents the
   division-by-zero in `duration_ms`), samples > 0 (`:122`).
-- **Blob discipline.** `data.assert_is_blob()` (`:129`) rejects quilt/patch
-  storage references, keeping blobs directly addressable.
+- **Blob discipline.** The `data: WalrusBlob` field accepts only standalone
+  blobs at compile time, keeping audio directly addressable without a runtime
+  kind check.
 - **No mutation surface.** All other functions are `&self` views
-  (`:158-201`); `Audio` is immutable once constructed. `drop` on the struct
+  (`:153-197`); `Audio` is immutable once constructed. `drop` on the struct
   lets holders destroy an `Audio` — harmless: it is an attestation value,
   and destruction can only discard one's own copy.
 
