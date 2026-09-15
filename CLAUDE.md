@@ -9,7 +9,8 @@ Move 2024 package. Implementation is in `sources/audio.move`; tests are in
 - V1 uses permissionless `new()`. Metadata validation does not verify audio bytes.
 - Nautilus-attested audio belongs in a separate future package. Do not add witness
   gating or attestation markers here.
-- Pin ori to a verified upstream commit and let Sui generate `Move.lock`.
+- Store a bare `u256` Walrus blob ID; the audio primitive has no Ori dependency.
+  Let Sui generate `Move.lock` from the manifest.
 - Validate with `sui move build --build-env testnet` and
   `sui move test --build-env testnet`.
 

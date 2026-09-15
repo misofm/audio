@@ -14,7 +14,6 @@
 module audio::audio;
 
 use std::string::String;
-use ori::data::WalrusBlob;
 
 // === Structs ===
 
@@ -35,8 +34,8 @@ public struct Audio has copy, drop, store {
     /// Unkeyed BLAKE3 digest of the canonical decoded PCM (codec-independent
     /// content fingerprint), using the default 32-byte output.
     pcm_digest: vector<u8>,
-    /// Standalone Walrus blob reference for the audio.
-    data: WalrusBlob,
+    /// Standalone Walrus blob ID for the audio.
+    blob_id: u256,
 }
 
 // === Constants ===
@@ -80,7 +79,7 @@ public fun new(
     sample_rate_hz: u32,
     samples: u64,
     pcm_digest: vector<u8>,
-    data: WalrusBlob,
+    blob_id: u256,
 ): Audio {
     // Format must be a non-empty, lowercase alphanumeric short name (e.g. `flac`).
     let format_bytes = format.as_bytes();
@@ -108,7 +107,7 @@ public fun new(
         sample_rate_hz,
         samples,
         pcm_digest,
-        data,
+        blob_id,
     }
 }
 
@@ -134,9 +133,9 @@ public fun samples(self: &Audio): u64 {
     self.samples
 }
 
-/// Returns a reference to the standalone Walrus blob.
-public fun data(self: &Audio): &WalrusBlob {
-    &self.data
+/// Returns the standalone Walrus blob ID.
+public fun blob_id(self: &Audio): u256 {
+    self.blob_id
 }
 
 /// Returns the duration of the audio in milliseconds (truncated).
