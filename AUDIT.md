@@ -4,7 +4,7 @@
 
 This audit covers the permissionless V1 `audio::new` constructor and the
 immutable `Audio` value in this package. Callers provide self-attested metadata
-and a `WalrusBlob`; the package validates metadata shape but does not download,
+and a bare Walrus blob ID; the package validates metadata shape but does not download,
 decode, or verify blob contents or the PCM digest. Nautilus-attested audio is a
 separate future package.
 
@@ -25,8 +25,8 @@ returned value.
 - **Overflow safety.** `duration_ms` uses `u64::mul_div` with a u128
   intermediate, so the multiplication is checked without the former fixed
   sample-count limit.
-- **Blob discipline.** The `data: WalrusBlob` field accepts only standalone
-  blobs at compile time.
+- **Blob reference.** The `blob_id: u256` field is a bare storage reference;
+  encryption metadata and blob construction are outside this V1 primitive.
 - **No mutation surface.** All accessors borrow immutable `Audio` fields.
   `drop` can discard an audio value or copy without affecting any other value.
 
