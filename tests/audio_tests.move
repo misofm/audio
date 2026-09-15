@@ -39,8 +39,44 @@ fun test_new() {
     assert_eq!(audio.data().blob_id(), 1);
     assert_eq!(*audio.format(), b"flac".to_string());
     assert_eq!(*audio.pcm_digest(), test_digest());
-    assert_eq!(sui::event::num_events(), 1);
-    assert_eq!(sui::event::events_by_type<af::AudioIngestedEvent>().length(), 1);
+    assert_eq!(sui::event::num_events(), 0);
+}
+
+#[test]
+fun discarding_new_result_emits_no_events() {
+    let _audio = af::new(
+        b"flac".to_string(),
+        2,
+        16,
+        44100,
+        441000,
+        test_digest(),
+        data::new_blob(1, confidentiality::new_unencrypted()),
+    );
+    assert_eq!(sui::event::num_events(), 0);
+}
+
+#[test]
+fun repeated_construction_emits_no_events() {
+    let _first = af::new(
+        b"flac".to_string(),
+        2,
+        16,
+        44100,
+        441000,
+        test_digest(),
+        data::new_blob(1, confidentiality::new_unencrypted()),
+    );
+    let _second = af::new(
+        b"flac".to_string(),
+        2,
+        16,
+        44100,
+        441000,
+        test_digest(),
+        data::new_blob(1, confidentiality::new_unencrypted()),
+    );
+    assert_eq!(sui::event::num_events(), 0);
 }
 
 #[test]
@@ -86,8 +122,6 @@ fun maximum_sample_count_is_supported() {
     let audio = af::new(b"flac".to_string(), 1, 16, 44100, u64::max_value!(), test_digest(), data::new_blob(1, confidentiality::new_unencrypted()));
     assert_eq!(audio.samples(), u64::max_value!());
     assert_eq!(audio.duration_ms(), 418_293_516_410_647_428);
-    let events = sui::event::events_by_type<af::AudioIngestedEvent>();
-    assert_eq!(af::ingested_event_duration_ms(&events[0]), audio.duration_ms());
 }
 
 #[test]
@@ -201,7 +235,6 @@ fun duration_rounds_down_without_losing_precision_before_division() {
         let audio = af::new("flac", 2, 16, 44100, samples, test_digest(), data::new_blob(1, confidentiality::new_unencrypted()));
         let expected = if (samples == 1 || samples == 44) 0 else if (samples == 45) 1 else 22;
         assert_eq!(audio.duration_ms(), expected);
-        let events = sui::event::events_by_type<af::AudioIngestedEvent>();
-        assert_eq!(af::ingested_event_duration_ms(&events[events.length() - 1]), expected);
     });
+    assert_eq!(sui::event::num_events(), 0);
 }

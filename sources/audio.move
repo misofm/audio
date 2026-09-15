@@ -14,7 +14,6 @@
 module audio::audio;
 
 use std::string::String;
-use sui::event::emit;
 use ori::data::WalrusBlob;
 
 // === Structs ===
@@ -38,20 +37,6 @@ public struct Audio has copy, drop, store {
     pcm_digest: vector<u8>,
     /// Standalone Walrus blob reference for the audio.
     data: WalrusBlob,
-}
-
-// === Events ===
-
-/// Emitted when an audio file is ingested.
-public struct AudioIngestedEvent has copy, drop {
-    blob_id: u256,
-    format: String,
-    channels: u8,
-    bit_depth: u8,
-    sample_rate_hz: u32,
-    samples: u64,
-    duration_ms: u64,
-    pcm_digest: vector<u8>,
 }
 
 // === Constants ===
@@ -116,19 +101,6 @@ public fun new(
     // Assert the samples are greater than 0.
     assert!(samples > 0, EInvalidSamples);
 
-    let duration_ms = samples.mul_div(1_000, sample_rate_hz as u64);
-
-    emit(AudioIngestedEvent {
-        blob_id: data.blob_id(),
-        format,
-        channels,
-        bit_depth,
-        sample_rate_hz,
-        samples,
-        duration_ms,
-        pcm_digest,
-    });
-
     Audio {
         format,
         channels,
@@ -182,9 +154,4 @@ public fun format(self: &Audio): &String {
 /// Returns the `BLAKE3` digest of the canonical decoded PCM (32 bytes).
 public fun pcm_digest(self: &Audio): &vector<u8> {
     &self.pcm_digest
-}
-
-#[test_only]
-public fun ingested_event_duration_ms(event: &AudioIngestedEvent): u64 {
-    event.duration_ms
 }

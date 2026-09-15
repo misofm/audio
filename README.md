@@ -82,8 +82,9 @@ container headers. The constructor checks the digest length; it does not compute
 or verify the hash.
 
 For encrypted bytes, construct the blob with
-`confidentiality::new_encrypted(sealed_dek)` instead. Creation emits
-`AudioIngestedEvent` for indexers.
+`confidentiality::new_encrypted(sealed_dek)` instead. The constructor returns
+the value for its caller to attach to an owning object; it does not emit an
+event or create a standalone ingestion record.
 
 ## Future Nautilus support
 
