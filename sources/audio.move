@@ -1,5 +1,5 @@
 // Copyright (c) Miso Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 
 /// An audio file with self-attested technical metadata — a standalone, wrapped
 /// primitive that any protocol can embed (e.g. as a recording's master).

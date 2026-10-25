@@ -1,6 +1,6 @@
 # miso-audio
 
-[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License: FSL-1.1-ALv2](https://img.shields.io/badge/license-FSL--1.1--ALv2-blue.svg)](LICENSE.md)
 [![Move](https://img.shields.io/badge/Move-2024-black.svg)](https://docs.sui.io/concepts/sui-move-concepts)
 
 > Self-attested audio as a composable on-chain primitive for [Sui](https://sui.io).
@@ -100,8 +100,8 @@ library packages supplied by the toolchain.
 
 ## Contributing
 
-Issues and pull requests are welcome. By contributing you agree that your contributions are licensed under the project's Apache 2.0 license.
+Issues and pull requests are welcome. By contributing you agree that your contributions are licensed under the project's FSL-1.1-ALv2 license.
 
 ## License
 
-[Apache 2.0](LICENSE) © Miso Labs, Inc.
+[Functional Source License 1.1, ALv2 Future License](./LICENSE.md) © Miso Labs, Inc.
