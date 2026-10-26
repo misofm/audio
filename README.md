@@ -3,100 +3,92 @@
 [![License: FSL-1.1-ALv2](https://img.shields.io/badge/license-FSL--1.1--ALv2-blue.svg)](LICENSE.md)
 [![Move](https://img.shields.io/badge/Move-2024-black.svg)](https://docs.sui.io/concepts/sui-move-concepts)
 
-> Self-attested audio as a composable on-chain primitive for [Sui](https://sui.io).
+> Verified lossless audio as a composable on-chain value for [Sui](https://sui.io).
 
-`audio` defines an `Audio` value that carries an audio file's technical metadata and a Walrus blob ID. Any protocol can embed it as a recording's master, a podcast episode, or a video's audio track. V1 uses permissionless **self-attestation**: callers supply the metadata directly, without a Nautilus enclave, attestation document, or custom ingester witness.
+`Audio<Verifier>` is a set of lossless audio facts vouched for by a `Verifier` type: channels, bit depth, sample rate, samples per channel, a PCM digest and an unencrypted Walrus blob. Only code holding a `Verifier` witness can call `new`, so the type parameter names who measured the audio. There is no self-attested audio.
 
-## Design
+## Trust
 
-- **Self-attested metadata.** Anyone can call `new()`. The package validates metadata shape and numeric bounds, but does not download the blob, decode audio, or verify that the digest or metadata matches its contents. The transaction sender identifies the submitter.
-- **Always wrapped.** `Audio` has `store` but **not** `key` — it cannot exist as a standalone object. It is always a field of some larger object (e.g. a recording), never an asset in its own right.
-- **Composable value.** `new()` returns an `Audio` for callers to embed in their own objects.
-- **Copyable metadata.** `Audio` has `copy`, `drop`, and `store`. Copying it duplicates metadata and a blob ID, without duplicating the stored audio bytes or granting authority.
+- **Pin the verifier types you trust.** Accept `Audio<SomeVerifier>`, never a generic `Audio<Verifier>` treated as trusted: anyone can publish a package with a witness and vouch for anything.
+- **Store audio from several verifiers under type-keyed dynamic fields**, not a fixed field typed to one verifier, so a new verifier can be added later.
+- `Audio` has `copy, drop, store` and no `key`. Copying it copies facts and a blob reference, not authority.
 
 ```move
-public struct Audio has copy, drop, store {
+public struct Audio<phantom Verifier> has copy, drop, store {
+    channels: u8,
+    bit_depth: u8,
+    sample_rate_hz: u32,
+    samples_per_channel: u64,
+    pcm_digest: vector<u8>,
+    blob: WalrusBlob,
+}
+
+public fun new<Verifier: drop>(
+    _: Verifier,
     format: String,
     channels: u8,
     bit_depth: u8,
     sample_rate_hz: u32,
-    samples: u64,
+    samples_per_channel: u64,
     pcm_digest: vector<u8>,
-    blob_id: u256,        // standalone Walrus blob ID
-}
+    blob: WalrusBlob,
+): Audio<Verifier>
 ```
+
+`new` checks the shape of the facts and emits `AudioCreatedEvent<Verifier>` with all of them, including `format` and `blob_id`. It does not read the blob or check the digest; that is the verifier's job.
+
+| Fact | Rule |
+|---|---|
+| `format` | 1 to 16 bytes, `a`–`z` and `0`–`9`. Emitted, not stored. |
+| `blob` | `ori::data::WalrusBlob`, not encrypted |
+| `channels` | at least 1 |
+| `bit_depth` | 1 to 32 |
+| `sample_rate_hz` | at least 1 |
+| `samples_per_channel` | at least 1 |
+| `pcm_digest` | exactly 32 bytes |
+
+Views: `channels`, `bit_depth`, `sample_rate_hz`, `samples_per_channel`, `pcm_digest`, `blob`, and `duration_ms`, which rounds down using `u64::mul_div`.
+
+## Formats
+
+`format` names the codec, which implies its standard container.
+
+| Name | Audio |
+|---|---|
+| `flac` | FLAC, native `.flac` |
+| `wav` | PCM in RIFF WAVE |
+| `aiff` | PCM in AIFF |
+| `alac` | Apple Lossless in M4A |
+| `wv` | WavPack |
+
+## PCM digest
+
+`pcm_digest` is BLAKE3, with the default 32-byte output, over the decoded PCM, interleaved by sample frame. Each sample is a signed integer, little-endian, `ceil(bit_depth / 8)` bytes, two's complement, right-aligned (sign-extended within those bytes). It hashes the audio, not the file, so the same PCM gives the same digest in any format.
 
 ## Install
 
-Add to your `Move.toml`:
+Pin a commit:
 
 ```toml
 [dependencies]
-audio = { git = "https://github.com/misofm/audio.git", rev = "main" }
+audio = { git = "https://github.com/misofm/audio.git", rev = "<commit>" }
 ```
 
-## Usage
-
-Supported integer PCM bit depths are 8, 16, 24, and 32 bits. Supported sample
-rates are 44.1, 48, 88.2, 96, 176.4, 192, 352.8, and 384 kHz. Other sample
-rates are rejected, including values between these supported rates.
-Sample counts may use the full positive `u64` range. `duration_ms()` rounds down
-to whole milliseconds using `u64::mul_div` to avoid intermediate overflow.
-
-Create V1 audio directly from caller-supplied metadata:
-
-```move
-use audio::audio;
-
-public fun ingest(
-    blob_id: u256,
-    pcm_digest: vector<u8>,
-): audio::Audio {
-    audio::new(
-        "flac",
-        2,       // channels
-        24,      // bit depth
-        48000,   // sample rate in Hz
-        480000,  // sample count (10 seconds)
-        pcm_digest,
-        blob_id,
-    )
-}
-```
-
-Consumers read the metadata:
-
-```move
-let rate = master.sample_rate_hz();
-let duration = master.duration_ms();
-```
-
-`pcm_digest` is the unkeyed BLAKE3 hash of the canonical decoded PCM, using
-the default 32-byte output. Hash the decoded PCM, not the encoded file or its
-container headers. The constructor checks the digest length; it does not compute
-or verify the hash.
-
-The blob ID is a bare `u256`; this V1 value has no confidentiality metadata or
-encrypted-audio path. The constructor returns the value for its caller to
-attach to an owning object; it does not emit an event or create a standalone
-ingestion record.
-
-## Future Nautilus support
-
-Nautilus-attested audio will be implemented in a separate package. This package
-contains only self-attested audio, with no witness or attestation marker.
+The package depends on [ori](https://github.com/unconfirmedlabs/ori) at `367ed5fe92a8b62da02c1116537cf08d111e0789`, so `WalrusBlob` is the same type as in `misofm/cover-art`.
 
 ## Build & test
 
 ```sh
-sui move build --build-env testnet
-sui move test --build-env testnet
+sui move build
+sui move test --coverage
 ```
 
-## Dependencies
+## Deployments
 
-The package has no external Move dependencies. It uses only Sui's standard
-library packages supplied by the toolchain.
+This API has not been published. The previous, self-attested API was published at:
+
+- mainnet `0x73a989640258bd5d82e0ae23bcb6f874fae65c78aecc1781b9a702801a043d7e`
+- testnet `0x7b143c3408e5fc8964e7ee696c9d4b63b6d0464347797e32bfa43275f09a3b08`
 
 ## Contributing
 

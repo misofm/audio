@@ -1,87 +1,67 @@
 // Copyright (c) Miso Labs, Inc.
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-/// An audio file with self-attested technical metadata — a standalone, wrapped
-/// primitive that any protocol can embed (e.g. as a recording's master).
-///
-/// ### Key Features:
-///
-/// - Format (codec/container, e.g. `flac`) and PCM parameters (channels, bit
-///   depth, sample rate, samples)
-/// - Walrus blob ID for storage reference
-/// - Permissionless creation from caller-supplied metadata via `new`.
-/// Metadata is structurally validated; blob contents and PCM digests are not verified.
 module audio::audio;
 
+// === Imports ===
+
 use std::string::String;
-
-// === Structs ===
-
-/// An audio file with caller-supplied technical metadata.
-/// Copying duplicates metadata and a blob reference, not the underlying audio bytes.
-public struct Audio has copy, drop, store {
-    /// Codec/container of the stored blob, as a bare lowercase short name
-    /// (e.g. `flac`, `wav`, `opus`). No `audio/` prefix — the type is already audio.
-    format: String,
-    /// Number of audio channels (1 = mono, 2 = stereo).
-    channels: u8,
-    /// Bits per sample (8, 16, 24, or 32).
-    bit_depth: u8,
-    /// Supported integer PCM sample rate in hertz (44.1/48 kHz families through 384 kHz).
-    sample_rate_hz: u32,
-    /// Total number of PCM samples in the audio.
-    samples: u64,
-    /// Unkeyed BLAKE3 digest of the canonical decoded PCM (codec-independent
-    /// content fingerprint), using the default 32-byte output.
-    pcm_digest: vector<u8>,
-    /// Standalone Walrus blob ID for the audio.
-    blob_id: u256,
-}
-
-// === Constants ===
-
-/// Maximum length of a format short name in bytes (generous; real names are <=8).
-const MAX_FORMAT_LENGTH: u64 = 16;
-/// Required length of the PCM digest in bytes (BLAKE3).
-const PCM_DIGEST_LENGTH: u64 = 32;
-/// Supported sample rates in hertz: 44.1/48 kHz and their successive doublings.
-const SUPPORTED_SAMPLE_RATES: vector<u32> = vector[
-    44_100, 48_000, 88_200, 96_000, 176_400, 192_000, 352_800, 384_000,
-];
+use sui::event::emit;
+use ori::data::WalrusBlob;
 
 // === Errors ===
 
-// Validation errors (20-29)
-/// Audio must have at least one channel.
-const EInvalidChannels: u64 = 21;
-/// Bit depth must be 8, 16, 24, or 32.
-const EInvalidBitDepth: u64 = 22;
-/// Sample rate must be one of the supported 44.1/48 kHz family rates.
-const EInvalidSampleRate: u64 = 23;
-/// Audio must have at least one sample.
-const EInvalidSamples: u64 = 24;
-/// Format must not be empty.
-const EEmptyFormat: u64 = 26;
-/// Format exceeds maximum length.
-const EFormatTooLong: u64 = 27;
-/// Format contains an invalid character (must be lowercase `a`-`z` or `0`-`9`).
-const EInvalidFormatChar: u64 = 28;
-/// PCM digest must be exactly 32 bytes (BLAKE3).
-const EInvalidDigestLength: u64 = 29;
-// === Public Functions ===
+const EEmptyFormat: u64 = 0;
+const EFormatTooLong: u64 = 1;
+const EInvalidFormatChar: u64 = 2;
+const EEncryptedBlob: u64 = 3;
+const EInvalidChannels: u64 = 4;
+const EInvalidBitDepth: u64 = 5;
+const EInvalidSampleRate: u64 = 6;
+const EInvalidSamplesPerChannel: u64 = 7;
+const EInvalidDigestLength: u64 = 8;
 
-/// Creates audio from the caller's self-attested metadata.
-/// Validates metadata shape and numeric bounds, without verifying the underlying bytes.
-public fun new(
+// === Constants ===
+
+const MAX_FORMAT_LENGTH: u64 = 16;
+const MAX_BIT_DEPTH: u8 = 32;
+const PCM_DIGEST_LENGTH: u64 = 32;
+
+// === Structs ===
+
+public struct Audio<phantom Verifier> has copy, drop, store {
+    channels: u8,
+    bit_depth: u8,
+    sample_rate_hz: u32,
+    samples_per_channel: u64,
+    pcm_digest: vector<u8>,
+    blob: WalrusBlob,
+}
+
+// === Events ===
+
+public struct AudioCreatedEvent<phantom Verifier> has copy, drop {
     format: String,
     channels: u8,
     bit_depth: u8,
     sample_rate_hz: u32,
-    samples: u64,
+    samples_per_channel: u64,
     pcm_digest: vector<u8>,
     blob_id: u256,
-): Audio {
-    // Format must be a non-empty, lowercase alphanumeric short name (e.g. `flac`).
+}
+
+// === Public Functions ===
+
+public fun new<Verifier: drop>(
+    _: Verifier,
+    format: String,
+    channels: u8,
+    bit_depth: u8,
+    sample_rate_hz: u32,
+    samples_per_channel: u64,
+    pcm_digest: vector<u8>,
+    blob: WalrusBlob,
+): Audio<Verifier> {
     let format_bytes = format.as_bytes();
     assert!(!format_bytes.is_empty(), EEmptyFormat);
     assert!(format_bytes.length() <= MAX_FORMAT_LENGTH, EFormatTooLong);
@@ -89,68 +69,76 @@ public fun new(
         format_bytes.all!(|c| (*c >= 0x61 && *c <= 0x7a) || (*c >= 0x30 && *c <= 0x39)),
         EInvalidFormatChar,
     );
-    // PCM digest must be a 32-byte BLAKE3 hash.
-    assert!(pcm_digest.length() == PCM_DIGEST_LENGTH, EInvalidDigestLength);
-    // Assert the channels are greater than 0.
+    assert!(!blob.blob_confidentiality().is_encrypted(), EEncryptedBlob);
     assert!(channels > 0, EInvalidChannels);
-    // Assert the bit depth is 8, 16, 24, or 32.
-    assert!(vector[8, 16, 24, 32].contains(&bit_depth), EInvalidBitDepth);
-    let supported_sample_rates = SUPPORTED_SAMPLE_RATES;
-    assert!(supported_sample_rates.contains(&sample_rate_hz), EInvalidSampleRate);
-    // Assert the samples are greater than 0.
-    assert!(samples > 0, EInvalidSamples);
+    assert!(bit_depth > 0 && bit_depth <= MAX_BIT_DEPTH, EInvalidBitDepth);
+    assert!(sample_rate_hz > 0, EInvalidSampleRate);
+    assert!(samples_per_channel > 0, EInvalidSamplesPerChannel);
+    assert!(pcm_digest.length() == PCM_DIGEST_LENGTH, EInvalidDigestLength);
 
-    Audio {
+    emit(AudioCreatedEvent<Verifier> {
         format,
         channels,
         bit_depth,
         sample_rate_hz,
-        samples,
+        samples_per_channel,
         pcm_digest,
-        blob_id,
+        blob_id: blob.blob_id(),
+    });
+
+    Audio {
+        channels,
+        bit_depth,
+        sample_rate_hz,
+        samples_per_channel,
+        pcm_digest,
+        blob,
     }
 }
 
-// === Audio View Functions ===
+// === View Functions ===
 
-/// Returns the number of audio channels (1 = mono, 2 = stereo).
-public fun channels(self: &Audio): u8 {
+public fun channels<Verifier>(self: &Audio<Verifier>): u8 {
     self.channels
 }
 
-/// Returns the bit depth of the audio (8, 16, 24, or 32 bits).
-public fun bit_depth(self: &Audio): u8 {
+public fun bit_depth<Verifier>(self: &Audio<Verifier>): u8 {
     self.bit_depth
 }
 
-/// Returns the sample rate in Hz.
-public fun sample_rate_hz(self: &Audio): u32 {
+public fun sample_rate_hz<Verifier>(self: &Audio<Verifier>): u32 {
     self.sample_rate_hz
 }
 
-/// Returns the total number of samples in the audio.
-public fun samples(self: &Audio): u64 {
-    self.samples
+public fun samples_per_channel<Verifier>(self: &Audio<Verifier>): u64 {
+    self.samples_per_channel
 }
 
-/// Returns the standalone Walrus blob ID.
-public fun blob_id(self: &Audio): u256 {
-    self.blob_id
-}
-
-/// Returns the duration of the audio in milliseconds (truncated).
-/// Uses a u128 intermediate product to avoid overflow, rounding down.
-/// All supported sample rates keep the result within u64 for any sample count.
-public fun duration_ms(self: &Audio): u64 {
-    self.samples.mul_div(1_000, self.sample_rate_hz as u64)
-}
-
-/// Returns the codec/container format of the stored blob (e.g. `flac`).
-public fun format(self: &Audio): &String {
-    &self.format
-}
-
-/// Returns the `BLAKE3` digest of the canonical decoded PCM (32 bytes).
-public fun pcm_digest(self: &Audio): &vector<u8> {
+public fun pcm_digest<Verifier>(self: &Audio<Verifier>): &vector<u8> {
     &self.pcm_digest
+}
+
+public fun blob<Verifier>(self: &Audio<Verifier>): &WalrusBlob {
+    &self.blob
+}
+
+public fun duration_ms<Verifier>(self: &Audio<Verifier>): u64 {
+    self.samples_per_channel.mul_div(1_000, self.sample_rate_hz as u64)
+}
+
+// === Test Functions ===
+
+#[test_only]
+public fun audio_created_event_fields<Verifier>(
+    event: &AudioCreatedEvent<Verifier>,
+): (String, u8, u8, u32, u64, vector<u8>, u256) {
+    (
+        event.format,
+        event.channels,
+        event.bit_depth,
+        event.sample_rate_hz,
+        event.samples_per_channel,
+        event.pcm_digest,
+        event.blob_id,
+    )
 }

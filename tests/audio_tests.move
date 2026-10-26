@@ -1,222 +1,243 @@
+// Copyright (c) Miso Labs, Inc.
+// SPDX-License-Identifier: FSL-1.1-ALv2
+
 #[test_only]
 module audio::audio_tests;
 
-use audio::audio as af;
+use std::string::String;
 use std::unit_test::assert_eq;
-use std::u64;
+use sui::event;
+use ori::confidentiality;
+use ori::data::{Self, WalrusBlob};
+use audio::audio::{Self, Audio, AudioCreatedEvent};
 
-// Error codes from audio.move
-const EInvalidChannels: u64 = 21;
-const EInvalidBitDepth: u64 = 22;
-const EInvalidSampleRate: u64 = 23;
-const EInvalidSamples: u64 = 24;
-const EEmptyFormat: u64 = 26;
-const EFormatTooLong: u64 = 27;
-const EInvalidFormatChar: u64 = 28;
-const EInvalidDigestLength: u64 = 29;
+// === Test Types ===
 
-const MAX_SAMPLES: u64 = 18_446_744_073_709_551; // Former multiplication limit.
+public struct TestVerifier() has drop;
 
-/// Synthetic 32-byte digest fixture; these tests validate storage and length, not hashing.
-fun test_digest(): vector<u8> {
-    x"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+public struct OtherVerifier() has drop;
+
+// === Constants ===
+
+const BLOB_ID: u256 = 0xb10b;
+const DIGEST: vector<u8> = x"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+
+// === Helpers ===
+
+fun blob(): WalrusBlob {
+    data::new_blob(BLOB_ID, confidentiality::new_unencrypted())
 }
 
-// === Happy Path ===
+fun new_audio(
+    format: String,
+    channels: u8,
+    bit_depth: u8,
+    sample_rate_hz: u32,
+    samples_per_channel: u64,
+    pcm_digest: vector<u8>,
+): Audio<TestVerifier> {
+    audio::new(
+        TestVerifier(),
+        format,
+        channels,
+        bit_depth,
+        sample_rate_hz,
+        samples_per_channel,
+        pcm_digest,
+        blob(),
+    )
+}
+
+fun with_format(format: vector<u8>): Audio<TestVerifier> {
+    new_audio(format.to_string(), 2, 16, 44_100, 441_000, DIGEST)
+}
+
+fun with_bit_depth(bit_depth: u8): Audio<TestVerifier> {
+    new_audio(b"flac".to_string(), 2, bit_depth, 44_100, 441_000, DIGEST)
+}
+
+// === New ===
 
 #[test]
-fun test_new() {
-    let audio = af::new(b"flac".to_string(),
-        2, 16, 44100, 441000,
-        test_digest(),
-        1,
-    );
+fun new_stores_every_fact() {
+    let audio = new_audio(b"flac".to_string(), 2, 24, 48_000, 480_000, DIGEST);
     assert_eq!(audio.channels(), 2);
-    assert_eq!(audio.bit_depth(), 16);
-    assert_eq!(audio.sample_rate_hz(), 44100);
-    assert_eq!(audio.samples(), 441000);
-    assert_eq!(audio.blob_id(), 1);
-    assert_eq!(*audio.format(), b"flac".to_string());
-    assert_eq!(*audio.pcm_digest(), test_digest());
-    assert_eq!(sui::event::num_events(), 0);
+    assert_eq!(audio.bit_depth(), 24);
+    assert_eq!(audio.sample_rate_hz(), 48_000);
+    assert_eq!(audio.samples_per_channel(), 480_000);
+    assert_eq!(*audio.pcm_digest(), DIGEST);
+    assert_eq!(*audio.blob(), blob());
+    assert_eq!(audio.blob().blob_id(), BLOB_ID);
+    assert_eq!(audio.duration_ms(), 10_000);
 }
 
 #[test]
-fun discarding_new_result_emits_no_events() {
-    let _audio = af::new(
+fun new_emits_every_fact_with_the_verifier_type() {
+    let _audio = new_audio(b"wv".to_string(), 6, 20, 22_050, 22_050, DIGEST);
+    let events = event::events_by_type<AudioCreatedEvent<TestVerifier>>();
+    assert_eq!(events.length(), 1);
+    assert_eq!(event::events_by_type<AudioCreatedEvent<OtherVerifier>>().length(), 0);
+    let (
+        format,
+        channels,
+        bit_depth,
+        sample_rate_hz,
+        samples_per_channel,
+        pcm_digest,
+        blob_id,
+    ) = audio::audio_created_event_fields(&events[0]);
+    assert_eq!(format, b"wv".to_string());
+    assert_eq!(channels, 6);
+    assert_eq!(bit_depth, 20);
+    assert_eq!(sample_rate_hz, 22_050);
+    assert_eq!(samples_per_channel, 22_050);
+    assert_eq!(pcm_digest, DIGEST);
+    assert_eq!(blob_id, BLOB_ID);
+}
+
+#[test]
+fun each_verifier_gets_its_own_type() {
+    let _ours = with_format(b"flac");
+    let _theirs: Audio<OtherVerifier> = audio::new(
+        OtherVerifier(),
         b"flac".to_string(),
         2,
         16,
-        44100,
-        441000,
-        test_digest(),
-        1,
+        44_100,
+        441_000,
+        DIGEST,
+        blob(),
     );
-    assert_eq!(sui::event::num_events(), 0);
+    assert_eq!(event::events_by_type<AudioCreatedEvent<TestVerifier>>().length(), 1);
+    assert_eq!(event::events_by_type<AudioCreatedEvent<OtherVerifier>>().length(), 1);
 }
 
 #[test]
-fun repeated_construction_emits_no_events() {
-    let _first = af::new(
+fun canonical_format_names_are_accepted() {
+    with_format(b"flac");
+    with_format(b"wav");
+    with_format(b"aiff");
+    with_format(b"alac");
+    with_format(b"wv");
+    with_format(b"0123456789abcdef");
+    assert_eq!(event::num_events(), 6);
+}
+
+#[test]
+fun bit_depth_bounds_are_accepted() {
+    assert_eq!(with_bit_depth(1).bit_depth(), 1);
+    assert_eq!(with_bit_depth(32).bit_depth(), 32);
+}
+
+#[test]
+fun minimal_values_are_accepted() {
+    let audio = new_audio(b"a".to_string(), 1, 1, 1, 1, DIGEST);
+    assert_eq!(audio.duration_ms(), 1_000);
+}
+
+#[test]
+fun duration_rounds_down() {
+    let audio = new_audio(b"flac".to_string(), 2, 16, 44_100, 44_099, DIGEST);
+    assert_eq!(audio.duration_ms(), 999);
+}
+
+#[test]
+fun duration_handles_the_largest_sample_count_without_overflow() {
+    let audio = new_audio(
         b"flac".to_string(),
         2,
         16,
-        44100,
-        441000,
-        test_digest(),
-        1,
+        4_294_967_295,
+        18_446_744_073_709_551_615,
+        DIGEST,
     );
-    let _second = af::new(
+    assert_eq!(audio.duration_ms(), 4_294_967_297_000);
+}
+
+// === Aborts ===
+
+#[test, expected_failure(abort_code = audio::EEmptyFormat)]
+fun empty_format_is_rejected() {
+    with_format(b"");
+}
+
+#[test, expected_failure(abort_code = audio::EFormatTooLong)]
+fun long_format_is_rejected() {
+    with_format(b"0123456789abcdefg");
+}
+
+#[test, expected_failure(abort_code = audio::EInvalidFormatChar)]
+fun uppercase_format_is_rejected() {
+    with_format(b"FLAC");
+}
+
+#[test, expected_failure(abort_code = audio::EInvalidFormatChar)]
+fun punctuated_format_is_rejected() {
+    with_format(b"audio/flac");
+}
+
+#[test, expected_failure(abort_code = audio::EInvalidFormatChar)]
+fun format_below_digits_is_rejected() {
+    with_format(b"/");
+}
+
+#[test, expected_failure(abort_code = audio::EInvalidFormatChar)]
+fun format_between_digits_and_letters_is_rejected() {
+    with_format(b":");
+}
+
+#[test, expected_failure(abort_code = audio::EInvalidFormatChar)]
+fun format_above_letters_is_rejected() {
+    with_format(b"{");
+}
+
+#[test, expected_failure(abort_code = audio::EEncryptedBlob)]
+fun encrypted_blob_is_rejected() {
+    audio::new(
+        TestVerifier(),
         b"flac".to_string(),
         2,
         16,
-        44100,
-        441000,
-        test_digest(),
-        1,
+        44_100,
+        441_000,
+        DIGEST,
+        data::new_blob(BLOB_ID, confidentiality::new_encrypted(x"dead")),
     );
-    assert_eq!(sui::event::num_events(), 0);
 }
 
-#[test]
-fun test_new_mono_audio() {
-    let audio = af::new(b"flac".to_string(), 1, 16, 44100, 1000, test_digest(), 1);
-    assert_eq!(audio.channels(), 1);
+#[test, expected_failure(abort_code = audio::EInvalidChannels)]
+fun zero_channels_are_rejected() {
+    new_audio(b"flac".to_string(), 0, 16, 44_100, 441_000, DIGEST);
 }
 
-#[test]
-fun test_new_all_valid_bit_depths() {
-    let audio_8 = af::new(b"flac".to_string(), 1, 8, 44100, 1000, test_digest(), 1);
-    assert_eq!(audio_8.bit_depth(), 8);
-
-    let audio_16 = af::new(b"flac".to_string(), 1, 16, 44100, 1000, test_digest(), 1);
-    assert_eq!(audio_16.bit_depth(), 16);
-
-    let audio_24 = af::new(b"flac".to_string(), 1, 24, 44100, 1000, test_digest(), 1);
-    assert_eq!(audio_24.bit_depth(), 24);
-
-    let audio_32 = af::new(b"flac".to_string(), 1, 32, 44100, 1000, test_digest(), 1);
-    assert_eq!(audio_32.bit_depth(), 32);
+#[test, expected_failure(abort_code = audio::EInvalidBitDepth)]
+fun zero_bit_depth_is_rejected() {
+    with_bit_depth(0);
 }
 
-#[test]
-fun maximum_sample_count_is_supported() {
-    let audio = af::new(b"flac".to_string(), 1, 16, 44100, u64::max_value!(), test_digest(), 1);
-    assert_eq!(audio.samples(), u64::max_value!());
-    assert_eq!(audio.duration_ms(), 418_293_516_410_647_428);
+#[test, expected_failure(abort_code = audio::EInvalidBitDepth)]
+fun bit_depth_above_32_is_rejected() {
+    with_bit_depth(33);
 }
 
-#[test]
-fun test_duration_ms() {
-    // 44100 samples at 44100 Hz = exactly 1000 ms
-    let audio = af::new(b"flac".to_string(), 2, 16, 44100, 44100, test_digest(), 1);
-    assert_eq!(audio.duration_ms(), 1000);
-
-    // 88200 samples at 44100 Hz = exactly 2000 ms
-    let audio2 = af::new(b"flac".to_string(), 2, 16, 44100, 88200, test_digest(), 1);
-    assert_eq!(audio2.duration_ms(), 2000);
-
-    // 48000 samples at 48000 Hz = exactly 1000 ms
-    let audio3 = af::new(b"flac".to_string(), 1, 24, 48000, 48000, test_digest(), 1);
-    assert_eq!(audio3.duration_ms(), 1000);
+#[test, expected_failure(abort_code = audio::EInvalidSampleRate)]
+fun zero_sample_rate_is_rejected() {
+    new_audio(b"flac".to_string(), 2, 16, 0, 441_000, DIGEST);
 }
 
-// === Error Conditions ===
-
-#[test, expected_failure(abort_code = EInvalidChannels, location = audio::audio)]
-fun test_new_zero_channels() {
-    af::new(b"flac".to_string(), 0, 16, 44100, 1000, test_digest(), 1);
+#[test, expected_failure(abort_code = audio::EInvalidSamplesPerChannel)]
+fun zero_samples_per_channel_are_rejected() {
+    new_audio(b"flac".to_string(), 2, 16, 44_100, 0, DIGEST);
 }
 
-#[test, expected_failure(abort_code = EInvalidBitDepth, location = audio::audio)]
-fun test_new_invalid_bit_depth_12() {
-    af::new(b"flac".to_string(), 2, 12, 44100, 1000, test_digest(), 1);
+#[test, expected_failure(abort_code = audio::EInvalidDigestLength)]
+fun short_digest_is_rejected() {
+    new_audio(b"flac".to_string(), 2, 16, 44_100, 441_000, x"01");
 }
 
-#[test, expected_failure(abort_code = EInvalidBitDepth, location = audio::audio)]
-fun test_new_invalid_bit_depth_0() {
-    af::new(b"flac".to_string(), 2, 0, 44100, 1000, test_digest(), 1);
-}
-
-#[test, expected_failure(abort_code = EInvalidSampleRate, location = audio::audio)]
-fun test_new_zero_sample_rate() {
-    af::new(b"flac".to_string(), 2, 16, 0, 1000, test_digest(), 1);
-}
-
-#[test]
-fun supported_sample_rates_preserve_metadata_and_duration() {
-    let rates = vector[44_100u32, 48_000, 88_200, 96_000, 176_400, 192_000, 352_800, 384_000];
-    let samples = vector[44_100u64, 48_000, 88_200, 96_000, 176_400, 192_000, 352_800, 384_000];
-    rates.length().do!(|i| {
-        let rate = rates[i];
-        let audio = af::new(
-            "flac", 2, 24, rate, samples[i], test_digest(),
-            1,
-        );
-        assert_eq!(audio.sample_rate_hz(), rate);
-        assert_eq!(audio.duration_ms(), 1000);
-    });
-}
-
-#[test, expected_failure(abort_code = EInvalidSampleRate, location = audio::audio)]
-fun sample_rate_below_supported_range_is_rejected() {
-    af::new("flac", 2, 16, 32_000, 32_000, test_digest(), 1);
-}
-
-#[test, expected_failure(abort_code = EInvalidSampleRate, location = audio::audio)]
-fun sample_rate_between_supported_rates_is_rejected() {
-    af::new("flac", 2, 16, 64_000, 64_000, test_digest(), 1);
-}
-
-#[test, expected_failure(abort_code = EInvalidSampleRate, location = audio::audio)]
-fun sample_rate_above_supported_range_is_rejected() {
-    af::new("flac", 2, 16, 384_001, 384_001, test_digest(), 1);
-}
-
-#[test, expected_failure(abort_code = EInvalidSamples, location = audio::audio)]
-fun test_new_zero_samples() {
-    af::new(b"flac".to_string(), 2, 16, 44100, 0, test_digest(), 1);
-}
-
-#[test]
-fun samples_above_former_limit_are_supported() {
-    let audio = af::new(b"flac".to_string(), 2, 16, 44100, MAX_SAMPLES + 1, test_digest(), 1);
-    assert_eq!(audio.duration_ms(), 418_293_516_410_647);
-}
-
-#[test, expected_failure(abort_code = EEmptyFormat, location = audio::audio)]
-fun test_new_empty_format() {
-    af::new(b"".to_string(), 2, 16, 44100, 1000, test_digest(), 1);
-}
-
-#[test, expected_failure(abort_code = EFormatTooLong, location = audio::audio)]
-fun test_new_format_too_long() {
-    // 17 chars > MAX_FORMAT_LENGTH (16)
-    af::new(b"aaaaaaaaaaaaaaaaa".to_string(), 2, 16, 44100, 1000, test_digest(), 1);
-}
-
-#[test, expected_failure(abort_code = EInvalidFormatChar, location = audio::audio)]
-fun test_new_format_uppercase() {
-    af::new(b"FLAC".to_string(), 2, 16, 44100, 1000, test_digest(), 1);
-}
-
-#[test, expected_failure(abort_code = EInvalidFormatChar, location = audio::audio)]
-fun test_new_format_with_slash() {
-    af::new(b"audio/flac".to_string(), 2, 16, 44100, 1000, test_digest(), 1);
-}
-
-#[test, expected_failure(abort_code = EInvalidDigestLength, location = audio::audio)]
-fun test_new_wrong_digest_length() {
-    // 1-byte digest != 32
-    af::new(b"flac".to_string(), 2, 16, 44100, 1000, x"00", 1);
-}
-
-#[test]
-fun duration_rounds_down_without_losing_precision_before_division() {
-    vector[1u64, 44, 45, 1000].do!(|samples| {
-        let audio = af::new("flac", 2, 16, 44100, samples, test_digest(), 1);
-        let expected = if (samples == 1 || samples == 44) 0 else if (samples == 45) 1 else 22;
-        assert_eq!(audio.duration_ms(), expected);
-    });
-    assert_eq!(sui::event::num_events(), 0);
+#[test, expected_failure(abort_code = audio::EInvalidDigestLength)]
+fun long_digest_is_rejected() {
+    let mut digest = DIGEST;
+    digest.push_back(0);
+    new_audio(b"flac".to_string(), 2, 16, 44_100, 441_000, digest);
 }
