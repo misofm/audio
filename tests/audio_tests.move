@@ -230,6 +230,17 @@ fun zero_samples_per_channel_are_rejected() {
     new_audio(b"flac".to_string(), 2, 16, 44_100, 0, DIGEST);
 }
 
+#[test]
+fun longest_duration_at_one_hertz_is_accepted() {
+    let audio = new_audio(b"flac".to_string(), 1, 16, 1, 18_446_744_073_709_551, DIGEST);
+    assert_eq!(audio.duration_ms(), 18_446_744_073_709_551_000);
+}
+
+#[test, expected_failure(abort_code = audio::EInvalidDuration)]
+fun duration_beyond_u64_is_rejected() {
+    new_audio(b"flac".to_string(), 1, 16, 1, 18_446_744_073_709_552, DIGEST);
+}
+
 #[test, expected_failure(abort_code = audio::EInvalidDigestLength)]
 fun short_digest_is_rejected() {
     new_audio(b"flac".to_string(), 2, 16, 44_100, 441_000, x"01");

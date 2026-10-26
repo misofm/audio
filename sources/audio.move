@@ -19,7 +19,8 @@ const EInvalidChannels: u64 = 4;
 const EInvalidBitDepth: u64 = 5;
 const EInvalidSampleRate: u64 = 6;
 const EInvalidSamplesPerChannel: u64 = 7;
-const EInvalidDigestLength: u64 = 8;
+const EInvalidDuration: u64 = 8;
+const EInvalidDigestLength: u64 = 9;
 
 // === Constants ===
 
@@ -74,6 +75,10 @@ public fun new<Verifier: drop>(
     assert!(bit_depth > 0 && bit_depth <= MAX_BIT_DEPTH, EInvalidBitDepth);
     assert!(sample_rate_hz > 0, EInvalidSampleRate);
     assert!(samples_per_channel > 0, EInvalidSamplesPerChannel);
+    assert!(
+        ((samples_per_channel as u128) * 1_000 / (sample_rate_hz as u128)).try_as_u64().is_some(),
+        EInvalidDuration,
+    );
     assert!(pcm_digest.length() == PCM_DIGEST_LENGTH, EInvalidDigestLength);
 
     emit(AudioCreatedEvent<Verifier> {

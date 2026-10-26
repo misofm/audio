@@ -5,14 +5,17 @@ Move 2024 package. Implementation is in `sources/audio.move`; tests are in
 
 ## Project Rules
 
-- PCM digests use unkeyed BLAKE3 with the default 32-byte output.
-- V1 uses permissionless `new()`. Metadata validation does not verify audio bytes.
-- Nautilus-attested audio belongs in a separate future package. Do not add witness
-  gating or attestation markers here.
-- Store a bare `u256` Walrus blob ID; the audio primitive has no Ori dependency.
-  Let Sui generate `Move.lock` from the manifest.
-- Validate with `sui move build --build-env testnet` and
-  `sui move test --build-env testnet`.
+- `Audio<phantom Verifier>` is created only by `new<Verifier: drop>` with the
+  verifier's witness. There is no self-attested audio; verification logic lives
+  in verifier packages such as `misofm/verified-audio`, never here.
+- The blob is an `ori::data::WalrusBlob` pinned at the same ori rev as
+  `misofm/cover-art`, and must not be encrypted.
+- `format` is validated and emitted in `AudioCreatedEvent<Verifier>`, not stored.
+- PCM digests are unkeyed BLAKE3 with the default 32-byte output, over the spec
+  in the README.
+- Follow the misofm brain MOVE-STANDARDS: no comments except the license header
+  and section banners, plain numeric error codes, prefer macros.
+- Validate with `sui move build --build-env mainnet` and `sui move test --coverage`.
 
 ## Sui Development Skills
 

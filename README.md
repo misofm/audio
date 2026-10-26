@@ -44,10 +44,10 @@ public fun new<Verifier: drop>(
 | `channels` | at least 1 |
 | `bit_depth` | 1 to 32 |
 | `sample_rate_hz` | at least 1 |
-| `samples_per_channel` | at least 1 |
+| `samples_per_channel` | at least 1, and the duration in milliseconds fits in a `u64` |
 | `pcm_digest` | exactly 32 bytes |
 
-Views: `channels`, `bit_depth`, `sample_rate_hz`, `samples_per_channel`, `pcm_digest`, `blob`, and `duration_ms`, which rounds down using `u64::mul_div`.
+Views: `channels`, `bit_depth`, `sample_rate_hz`, `samples_per_channel`, `pcm_digest`, `blob`, and `duration_ms`, which rounds down and never aborts, because `new` bounds the duration.
 
 ## Formats
 
