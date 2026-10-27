@@ -30,7 +30,7 @@ const PCM_DIGEST_LENGTH: u64 = 32;
 
 // === Structs ===
 
-public struct Audio<phantom Verifier> has copy, drop, store {
+public struct Audio<phantom AudioVerifier> has copy, drop, store {
     channels: u8,
     bit_depth: u8,
     sample_rate_hz: u32,
@@ -41,7 +41,7 @@ public struct Audio<phantom Verifier> has copy, drop, store {
 
 // === Events ===
 
-public struct AudioCreatedEvent<phantom Verifier> has copy, drop {
+public struct AudioCreatedEvent<phantom AudioVerifier> has copy, drop {
     format: String,
     channels: u8,
     bit_depth: u8,
@@ -53,8 +53,8 @@ public struct AudioCreatedEvent<phantom Verifier> has copy, drop {
 
 // === Public Functions ===
 
-public fun new<Verifier: drop>(
-    _: Verifier,
+public fun new<AudioVerifier: drop>(
+    _: AudioVerifier,
     format: String,
     channels: u8,
     bit_depth: u8,
@@ -62,7 +62,7 @@ public fun new<Verifier: drop>(
     samples_per_channel: u64,
     pcm_digest: vector<u8>,
     blob: WalrusBlob,
-): Audio<Verifier> {
+): Audio<AudioVerifier> {
     let format_bytes = format.as_bytes();
     assert!(!format_bytes.is_empty(), EEmptyFormat);
     assert!(format_bytes.length() <= MAX_FORMAT_LENGTH, EFormatTooLong);
@@ -81,7 +81,7 @@ public fun new<Verifier: drop>(
     );
     assert!(pcm_digest.length() == PCM_DIGEST_LENGTH, EInvalidDigestLength);
 
-    emit(AudioCreatedEvent<Verifier> {
+    emit(AudioCreatedEvent<AudioVerifier> {
         format,
         channels,
         bit_depth,
@@ -103,39 +103,39 @@ public fun new<Verifier: drop>(
 
 // === View Functions ===
 
-public fun channels<Verifier>(self: &Audio<Verifier>): u8 {
+public fun channels<AudioVerifier>(self: &Audio<AudioVerifier>): u8 {
     self.channels
 }
 
-public fun bit_depth<Verifier>(self: &Audio<Verifier>): u8 {
+public fun bit_depth<AudioVerifier>(self: &Audio<AudioVerifier>): u8 {
     self.bit_depth
 }
 
-public fun sample_rate_hz<Verifier>(self: &Audio<Verifier>): u32 {
+public fun sample_rate_hz<AudioVerifier>(self: &Audio<AudioVerifier>): u32 {
     self.sample_rate_hz
 }
 
-public fun samples_per_channel<Verifier>(self: &Audio<Verifier>): u64 {
+public fun samples_per_channel<AudioVerifier>(self: &Audio<AudioVerifier>): u64 {
     self.samples_per_channel
 }
 
-public fun pcm_digest<Verifier>(self: &Audio<Verifier>): &vector<u8> {
+public fun pcm_digest<AudioVerifier>(self: &Audio<AudioVerifier>): &vector<u8> {
     &self.pcm_digest
 }
 
-public fun blob<Verifier>(self: &Audio<Verifier>): &WalrusBlob {
+public fun blob<AudioVerifier>(self: &Audio<AudioVerifier>): &WalrusBlob {
     &self.blob
 }
 
-public fun duration_ms<Verifier>(self: &Audio<Verifier>): u64 {
+public fun duration_ms<AudioVerifier>(self: &Audio<AudioVerifier>): u64 {
     self.samples_per_channel.mul_div(1_000, self.sample_rate_hz as u64)
 }
 
 // === Test Functions ===
 
 #[test_only]
-public fun audio_created_event_fields<Verifier>(
-    event: &AudioCreatedEvent<Verifier>,
+public fun audio_created_event_fields<AudioVerifier>(
+    event: &AudioCreatedEvent<AudioVerifier>,
 ): (String, u8, u8, u32, u64, vector<u8>, u256) {
     (
         event.format,

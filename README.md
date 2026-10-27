@@ -5,16 +5,16 @@
 
 > Verified lossless audio as a composable on-chain value for [Sui](https://sui.io).
 
-`Audio<Verifier>` is a set of lossless audio facts vouched for by a `Verifier` type: channels, bit depth, sample rate, samples per channel, a PCM digest and an unencrypted Walrus blob. Only code holding a `Verifier` witness can call `new`, so the type parameter names who measured the audio. There is no self-attested audio.
+`Audio<AudioVerifier>` is a set of lossless audio facts vouched for by an `AudioVerifier` type: channels, bit depth, sample rate, samples per channel, a PCM digest and an unencrypted Walrus blob. Only code holding an `AudioVerifier` witness can call `new`, so the type parameter names who measured the audio. There is no self-attested audio.
 
 ## Trust
 
-- **Pin the verifier types you trust.** Accept `Audio<SomeVerifier>`, never a generic `Audio<Verifier>` treated as trusted: anyone can publish a package with a witness and vouch for anything.
+- **Pin the verifier types you trust.** Accept `Audio<SomeVerifier>`, never a generic `Audio<AudioVerifier>` treated as trusted: anyone can publish a package with a witness and vouch for anything.
 - **Store audio from several verifiers under type-keyed dynamic fields**, not a fixed field typed to one verifier, so a new verifier can be added later.
 - `Audio` has `copy, drop, store` and no `key`. Copying it copies facts and a blob reference, not authority.
 
 ```move
-public struct Audio<phantom Verifier> has copy, drop, store {
+public struct Audio<phantom AudioVerifier> has copy, drop, store {
     channels: u8,
     bit_depth: u8,
     sample_rate_hz: u32,
@@ -23,8 +23,8 @@ public struct Audio<phantom Verifier> has copy, drop, store {
     blob: WalrusBlob,
 }
 
-public fun new<Verifier: drop>(
-    _: Verifier,
+public fun new<AudioVerifier: drop>(
+    _: AudioVerifier,
     format: String,
     channels: u8,
     bit_depth: u8,
@@ -32,10 +32,10 @@ public fun new<Verifier: drop>(
     samples_per_channel: u64,
     pcm_digest: vector<u8>,
     blob: WalrusBlob,
-): Audio<Verifier>
+): Audio<AudioVerifier>
 ```
 
-`new` checks the shape of the facts and emits `AudioCreatedEvent<Verifier>` with all of them, including `format` and `blob_id`. It does not read the blob or check the digest; that is the verifier's job.
+`new` checks the shape of the facts and emits `AudioCreatedEvent<AudioVerifier>` with all of them, including `format` and `blob_id`. It does not read the blob or check the digest; that is the verifier's job.
 
 | Fact | Rule |
 |---|---|

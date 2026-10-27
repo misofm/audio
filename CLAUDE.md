@@ -5,12 +5,12 @@ Move 2024 package. Implementation is in `sources/audio.move`; tests are in
 
 ## Project Rules
 
-- `Audio<phantom Verifier>` is created only by `new<Verifier: drop>` with the
+- `Audio<phantom AudioVerifier>` is created only by `new<AudioVerifier: drop>` with the
   verifier's witness. There is no self-attested audio; verification logic lives
   in verifier packages such as `misofm/verified-audio`, never here.
 - The blob is an `ori::data::WalrusBlob` pinned at the same ori rev as
   `misofm/cover-art`, and must not be encrypted.
-- `format` is validated and emitted in `AudioCreatedEvent<Verifier>`, not stored.
+- `format` is validated and emitted in `AudioCreatedEvent<AudioVerifier>`, not stored.
 - PCM digests are unkeyed BLAKE3 with the default 32-byte output, over the spec
   in the README.
 - Follow the misofm brain MOVE-STANDARDS: no comments except the license header

@@ -13,9 +13,9 @@ use audio::audio::{Self, Audio, AudioCreatedEvent};
 
 // === Test Types ===
 
-public struct TestVerifier() has drop;
+public struct TestAudioVerifier() has drop;
 
-public struct OtherVerifier() has drop;
+public struct OtherAudioVerifier() has drop;
 
 // === Constants ===
 
@@ -35,9 +35,9 @@ fun new_audio(
     sample_rate_hz: u32,
     samples_per_channel: u64,
     pcm_digest: vector<u8>,
-): Audio<TestVerifier> {
+): Audio<TestAudioVerifier> {
     audio::new(
-        TestVerifier(),
+        TestAudioVerifier(),
         format,
         channels,
         bit_depth,
@@ -48,11 +48,11 @@ fun new_audio(
     )
 }
 
-fun with_format(format: vector<u8>): Audio<TestVerifier> {
+fun with_format(format: vector<u8>): Audio<TestAudioVerifier> {
     new_audio(format.to_string(), 2, 16, 44_100, 441_000, DIGEST)
 }
 
-fun with_bit_depth(bit_depth: u8): Audio<TestVerifier> {
+fun with_bit_depth(bit_depth: u8): Audio<TestAudioVerifier> {
     new_audio(b"flac".to_string(), 2, bit_depth, 44_100, 441_000, DIGEST)
 }
 
@@ -74,9 +74,9 @@ fun new_stores_every_fact() {
 #[test]
 fun new_emits_every_fact_with_the_verifier_type() {
     let _audio = new_audio(b"wv".to_string(), 6, 20, 22_050, 22_050, DIGEST);
-    let events = event::events_by_type<AudioCreatedEvent<TestVerifier>>();
+    let events = event::events_by_type<AudioCreatedEvent<TestAudioVerifier>>();
     assert_eq!(events.length(), 1);
-    assert_eq!(event::events_by_type<AudioCreatedEvent<OtherVerifier>>().length(), 0);
+    assert_eq!(event::events_by_type<AudioCreatedEvent<OtherAudioVerifier>>().length(), 0);
     let (
         format,
         channels,
@@ -98,8 +98,8 @@ fun new_emits_every_fact_with_the_verifier_type() {
 #[test]
 fun each_verifier_gets_its_own_type() {
     let _ours = with_format(b"flac");
-    let _theirs: Audio<OtherVerifier> = audio::new(
-        OtherVerifier(),
+    let _theirs: Audio<OtherAudioVerifier> = audio::new(
+        OtherAudioVerifier(),
         b"flac".to_string(),
         2,
         16,
@@ -108,8 +108,8 @@ fun each_verifier_gets_its_own_type() {
         DIGEST,
         blob(),
     );
-    assert_eq!(event::events_by_type<AudioCreatedEvent<TestVerifier>>().length(), 1);
-    assert_eq!(event::events_by_type<AudioCreatedEvent<OtherVerifier>>().length(), 1);
+    assert_eq!(event::events_by_type<AudioCreatedEvent<TestAudioVerifier>>().length(), 1);
+    assert_eq!(event::events_by_type<AudioCreatedEvent<OtherAudioVerifier>>().length(), 1);
 }
 
 #[test]
@@ -194,7 +194,7 @@ fun format_above_letters_is_rejected() {
 #[test, expected_failure(abort_code = audio::EEncryptedBlob)]
 fun encrypted_blob_is_rejected() {
     audio::new(
-        TestVerifier(),
+        TestAudioVerifier(),
         b"flac".to_string(),
         2,
         16,
