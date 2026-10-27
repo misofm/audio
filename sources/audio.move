@@ -80,6 +80,7 @@ public fun new<AudioVerifier: drop>(
         EInvalidDuration,
     );
     assert!(pcm_digest.length() == PCM_DIGEST_LENGTH, EInvalidDigestLength);
+
     emit(AudioCreatedEvent<AudioVerifier> {
         format,
         channels,
