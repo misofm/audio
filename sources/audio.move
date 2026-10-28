@@ -53,13 +53,11 @@ public struct AudioCreatedEvent<phantom AudioVerifier> has copy, drop {
     pcm_digest: vector<u8>,
 }
 
-// === Init ===
+// === Public Functions ===
 
 fun init(ctx: &mut TxContext) {
     transfer::share_object(AudioRegistry { id: object::new(ctx) });
 }
-
-// === Public Functions ===
 
 public fun new<AudioVerifier: drop>(
     registry: &mut AudioRegistry,

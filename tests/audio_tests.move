@@ -57,7 +57,7 @@ fun with_samples(sample_rate_hz: u32, samples_per_channel: u64): Audio<TestAudio
     audio
 }
 
-// === Init ===
+// === New ===
 
 #[test]
 fun init_shares_the_registry() {
@@ -68,8 +68,6 @@ fun init_shares_the_registry() {
     test_scenario::return_shared(registry);
     scenario.end();
 }
-
-// === New ===
 
 #[test]
 fun new_stores_every_fact() {
