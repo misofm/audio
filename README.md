@@ -74,7 +74,7 @@ Pin a commit:
 audio = { git = "https://github.com/misofm/audio.git", rev = "<commit>" }
 ```
 
-The package depends on [ori](https://github.com/unconfirmedlabs/ori) at `367ed5fe92a8b62da02c1116537cf08d111e0789`, so `WalrusBlob` is the same type as in `misofm/cover-art`.
+The package depends on [ori](https://github.com/unconfirmedlabs/ori) at `effc16a7f4efc334ffa8f39effcc9e7bbc3f837c`, so `WalrusBlob` is the same type as in `misofm/cover-art`.
 
 ## Build & test
 

@@ -5,4 +5,4 @@ license = "FSL-1.1-ALv2"
 authors = ["Miso Labs, Inc. (os@miso.fm)"]
 
 [dependencies]
-ori = { git = "https://github.com/unconfirmedlabs/ori.git", subdir = "move", rev = "367ed5fe92a8b62da02c1116537cf08d111e0789" }
+ori = { git = "https://github.com/unconfirmedlabs/ori.git", subdir = "move", rev = "effc16a7f4efc334ffa8f39effcc9e7bbc3f837c" }
