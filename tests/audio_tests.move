@@ -4,7 +4,7 @@
 #[test_only]
 module audio::audio_tests;
 
-use audio::audio::{Self, Audio, AudioRegistry, AudioCreatedEvent, AudioEncodingAddedEvent};
+use audio::audio::{Self, Audio, AudioRegistry, AudioCreatedEvent, AudioEncodingRegisteredEvent};
 use ori::{confidentiality, data};
 use std::unit_test::{assert_eq, destroy};
 use sui::{event, test_scenario};
@@ -14,6 +14,8 @@ use sui::{event, test_scenario};
 public struct TestAudioVerifier() has drop;
 
 public struct OtherAudioVerifier() has drop;
+
+public struct TestAudioEncodingVerifier() has drop;
 
 // === Constants ===
 
@@ -231,21 +233,42 @@ fun longest_duration_at_one_hertz_is_accepted() {
 // === Encodings ===
 
 #[test]
-fun add_encoding_records_the_blob_and_emits_it() {
+fun register_encoding_records_the_blob_and_emits_it() {
     let mut registry = audio::new_registry_for_testing(&mut tx_context::dummy());
     let mut audio = stereo(&mut registry);
-    assert!(!audio.has_encoding(BLOB_ID));
-    audio.add_encoding(TestAudioVerifier(), BLOB_ID);
-    assert!(audio.has_encoding(BLOB_ID));
+    assert!(!audio.has_encoding<_, TestAudioVerifier>(BLOB_ID));
+    audio.register_encoding(TestAudioVerifier(), BLOB_ID);
+    assert!(audio.has_encoding<_, TestAudioVerifier>(BLOB_ID));
     assert_eq!(
-        audio.encoding(BLOB_ID),
+        audio.encoding<_, TestAudioVerifier>(BLOB_ID),
         data::new_blob(BLOB_ID, confidentiality::new_unencrypted()),
     );
-    let events = event::events_by_type<AudioEncodingAddedEvent<TestAudioVerifier>>();
+    let events = event::events_by_type<
+        AudioEncodingRegisteredEvent<TestAudioVerifier, TestAudioVerifier>,
+    >();
     assert_eq!(events.length(), 1);
-    let (audio_id, blob_id) = audio::audio_encoding_added_event_fields(&events[0]);
+    let (audio_id, blob_id) = audio::audio_encoding_registered_event_fields(&events[0]);
     assert_eq!(audio_id, object::id(&audio));
     assert_eq!(blob_id, BLOB_ID);
+    destroy(audio);
+    destroy(registry);
+}
+
+#[test]
+fun another_encoding_verifier_registers_under_its_own_type() {
+    let mut registry = audio::new_registry_for_testing(&mut tx_context::dummy());
+    let mut audio = stereo(&mut registry);
+    audio.register_encoding(TestAudioEncodingVerifier(), BLOB_ID);
+    assert!(audio.has_encoding<_, TestAudioEncodingVerifier>(BLOB_ID));
+    assert!(!audio.has_encoding<_, TestAudioVerifier>(BLOB_ID));
+    audio.register_encoding(TestAudioVerifier(), BLOB_ID);
+    assert!(audio.has_encoding<_, TestAudioVerifier>(BLOB_ID));
+    assert_eq!(
+        event::events_by_type<
+            AudioEncodingRegisteredEvent<TestAudioVerifier, TestAudioEncodingVerifier>,
+        >().length(),
+        1,
+    );
     destroy(audio);
     destroy(registry);
 }
@@ -254,22 +277,27 @@ fun add_encoding_records_the_blob_and_emits_it() {
 fun one_audio_holds_many_encodings() {
     let mut registry = audio::new_registry_for_testing(&mut tx_context::dummy());
     let mut audio = stereo(&mut registry);
-    audio.add_encoding(TestAudioVerifier(), BLOB_ID);
-    audio.add_encoding(TestAudioVerifier(), OTHER_BLOB_ID);
-    assert!(audio.has_encoding(BLOB_ID));
-    assert!(audio.has_encoding(OTHER_BLOB_ID));
-    assert_eq!(event::events_by_type<AudioEncodingAddedEvent<TestAudioVerifier>>().length(), 2);
+    audio.register_encoding(TestAudioVerifier(), BLOB_ID);
+    audio.register_encoding(TestAudioVerifier(), OTHER_BLOB_ID);
+    assert!(audio.has_encoding<_, TestAudioVerifier>(BLOB_ID));
+    assert!(audio.has_encoding<_, TestAudioVerifier>(OTHER_BLOB_ID));
+    assert_eq!(
+        event::events_by_type<
+            AudioEncodingRegisteredEvent<TestAudioVerifier, TestAudioVerifier>,
+        >().length(),
+        2,
+    );
     destroy(audio);
     destroy(registry);
 }
 
 #[test]
-fun adding_an_encoding_twice_is_silent() {
+fun registering_an_encoding_twice_is_silent() {
     let mut registry = audio::new_registry_for_testing(&mut tx_context::dummy());
     let mut audio = stereo(&mut registry);
-    audio.add_encoding(TestAudioVerifier(), BLOB_ID);
+    audio.register_encoding(TestAudioVerifier(), BLOB_ID);
     let events_before = event::num_events();
-    audio.add_encoding(TestAudioVerifier(), BLOB_ID);
+    audio.register_encoding(TestAudioVerifier(), BLOB_ID);
     assert_eq!(event::num_events(), events_before);
     destroy(audio);
     destroy(registry);
@@ -289,7 +317,7 @@ fun registering_the_same_facts_twice_aborts() {
 fun encoding_without_the_blob_aborts() {
     let mut registry = audio::new_registry_for_testing(&mut tx_context::dummy());
     let audio = stereo(&mut registry);
-    audio.encoding(BLOB_ID);
+    audio.encoding<_, TestAudioVerifier>(BLOB_ID);
     abort
 }
 

@@ -14,9 +14,10 @@ Move 2024 package. Implementation is in `sources/audio.move`; tests are in
   samples_per_channel, pcm_digest`: frame shape, then time, then content, as in
   the verifier's signed payload. It is part of the key's BCS, so it fixes every
   derived address; don't change it.
-- Encodings are `AudioEncodingKey(blob_id) → true` on the Audio, write-once,
-  never removed. Formats are not stored. ori (`WalrusBlob`) is pinned at the
-  same rev as `misofm/cover-art`.
+- Encodings are `AudioEncodingKey<AudioEncodingVerifier>(blob_id) → true` on
+  the Audio, registered with `register_encoding` under the encoding verifier's
+  own witness type, write-once, never removed. Formats are not stored. ori
+  (`WalrusBlob`) is pinned at the same rev as `misofm/cover-art`.
 - Audio means integer linear PCM. Float PCM or DSD would be separate types.
 - PCM digests are unkeyed BLAKE3 with the default 32-byte output, over the spec
   in the README.

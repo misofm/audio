@@ -47,7 +47,7 @@ public struct AudioKey<phantom AudioVerifier> has copy, drop, store {
     pcm_digest: vector<u8>,
 }
 
-public struct AudioEncodingKey(u256) has copy, drop, store;
+public struct AudioEncodingKey<phantom AudioEncodingVerifier>(u256) has copy, drop, store;
 
 // === Events ===
 
@@ -60,7 +60,10 @@ public struct AudioCreatedEvent<phantom AudioVerifier> has copy, drop {
     pcm_digest: vector<u8>,
 }
 
-public struct AudioEncodingAddedEvent<phantom AudioVerifier> has copy, drop {
+public struct AudioEncodingRegisteredEvent<
+    phantom AudioVerifier,
+    phantom AudioEncodingVerifier,
+> has copy, drop {
     audio_id: ID,
     blob_id: u256,
 }
@@ -111,15 +114,18 @@ public fun new<AudioVerifier: drop>(
     Audio { id, channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest }
 }
 
-public fun add_encoding<AudioVerifier: drop>(
+public fun register_encoding<AudioVerifier, AudioEncodingVerifier: drop>(
     audio: &mut Audio<AudioVerifier>,
-    _: AudioVerifier,
+    _: AudioEncodingVerifier,
     blob_id: u256,
 ) {
-    let key = AudioEncodingKey(blob_id);
+    let key = AudioEncodingKey<AudioEncodingVerifier>(blob_id);
     if (dynamic_field::exists(&audio.id, key)) return;
     dynamic_field::add(&mut audio.id, key, true);
-    emit(AudioEncodingAddedEvent<AudioVerifier> { audio_id: audio.id.to_inner(), blob_id });
+    emit(AudioEncodingRegisteredEvent<AudioVerifier, AudioEncodingVerifier> {
+        audio_id: audio.id.to_inner(),
+        blob_id,
+    });
 }
 
 public fun share<AudioVerifier>(audio: Audio<AudioVerifier>) {
@@ -152,12 +158,18 @@ public fun duration_ms<AudioVerifier>(audio: &Audio<AudioVerifier>): u64 {
     audio.samples_per_channel.mul_div(1_000, audio.sample_rate_hz as u64)
 }
 
-public fun has_encoding<AudioVerifier>(audio: &Audio<AudioVerifier>, blob_id: u256): bool {
-    dynamic_field::exists(&audio.id, AudioEncodingKey(blob_id))
+public fun has_encoding<AudioVerifier, AudioEncodingVerifier>(
+    audio: &Audio<AudioVerifier>,
+    blob_id: u256,
+): bool {
+    dynamic_field::exists(&audio.id, AudioEncodingKey<AudioEncodingVerifier>(blob_id))
 }
 
-public fun encoding<AudioVerifier>(audio: &Audio<AudioVerifier>, blob_id: u256): WalrusBlob {
-    assert!(audio.has_encoding(blob_id), ENoEncoding);
+public fun encoding<AudioVerifier, AudioEncodingVerifier>(
+    audio: &Audio<AudioVerifier>,
+    blob_id: u256,
+): WalrusBlob {
+    assert!(has_encoding<AudioVerifier, AudioEncodingVerifier>(audio, blob_id), ENoEncoding);
     data::new_blob(blob_id, confidentiality::new_unencrypted())
 }
 
@@ -208,8 +220,8 @@ public fun audio_created_event_fields<AudioVerifier>(
 }
 
 #[test_only]
-public fun audio_encoding_added_event_fields<AudioVerifier>(
-    event: &AudioEncodingAddedEvent<AudioVerifier>,
+public fun audio_encoding_registered_event_fields<AudioVerifier, AudioEncodingVerifier>(
+    event: &AudioEncodingRegisteredEvent<AudioVerifier, AudioEncodingVerifier>,
 ): (ID, u256) {
     (event.audio_id, event.blob_id)
 }
