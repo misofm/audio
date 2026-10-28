@@ -13,7 +13,6 @@ const EInvalidSampleRate: u64 = 2;
 const EInvalidSamplesPerChannel: u64 = 3;
 const EInvalidDuration: u64 = 4;
 const EInvalidDigestLength: u64 = 5;
-const EAudioExists: u64 = 6;
 
 // === Constants ===
 
@@ -87,7 +86,6 @@ public fun new<AudioVerifier: drop>(
         samples_per_channel,
         pcm_digest,
     };
-    assert!(!derived_object::exists(&registry.id, key), EAudioExists);
     let id = derived_object::claim(&mut registry.id, key);
     emit(AudioCreatedEvent<AudioVerifier> {
         audio_id: id.to_inner(),

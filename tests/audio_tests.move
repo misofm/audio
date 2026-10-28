@@ -6,7 +6,7 @@ module audio::audio_tests;
 
 use audio::audio::{Self, Audio, AudioRegistry, AudioCreatedEvent};
 use std::unit_test::{assert_eq, destroy};
-use sui::{event, test_scenario};
+use sui::{derived_object, event, test_scenario};
 
 // === Test Types ===
 
@@ -227,7 +227,7 @@ fun longest_duration_at_one_hertz_is_accepted() {
 
 // === Aborts ===
 
-#[test, expected_failure(abort_code = audio::EAudioExists)]
+#[test, expected_failure(abort_code = derived_object::EObjectAlreadyExists)]
 fun registering_the_same_facts_twice_aborts() {
     let mut registry = audio::new_registry_for_testing(&mut tx_context::dummy());
     let _first = stereo(&mut registry);
