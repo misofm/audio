@@ -37,7 +37,7 @@ public struct Audio<phantom AudioVerifier> has key {
 | Function | Gate | What it does |
 |---|---|---|
 | `new<AudioVerifier: drop>(registry, witness, channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest)` | witness | Checks the facts, claims the Audio from the registry and emits `AudioCreatedEvent`. Aborts with `derived_object::EObjectAlreadyExists` if it is already registered. |
-| `audio_encoding::register_encoding<AudioVerifier, AudioEncodingVerifier: drop>(audio, witness, blob_id)` | encoding witness | Registers a blob as an encoding under the witness's type and emits `AudioEncodingRegisteredEvent`. Registering it again does nothing. |
+| `audio_encoding::register_encoding<AudioVerifier, AudioEncodingVerifier: drop>(audio, witness, blob_id)` | encoding witness | Registers a blob as an encoding under the witness's type and emits `AudioEncodingRegisteredEvent`. Aborts with `EAlreadyRegistered` if that verifier already registered the blob. |
 | `share<AudioVerifier>(audio)` | none | Shares a new Audio. |
 | `derive_address<AudioVerifier>(registry_id, channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest)` | none | The Audio's address for those facts. |
 | `audio_encoding::has_encoding<AudioVerifier, AudioEncodingVerifier>(audio, blob_id)` | none | Whether that encoding verifier registered the blob. |

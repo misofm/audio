@@ -86,14 +86,11 @@ fun one_audio_holds_many_encodings() {
     destroy(registry);
 }
 
-#[test]
-fun registering_an_encoding_twice_is_silent() {
+#[test, expected_failure(abort_code = audio_encoding::EAlreadyRegistered)]
+fun registering_an_encoding_twice_aborts() {
     let mut registry = audio::new_registry_for_testing(&mut tx_context::dummy());
     let mut audio = stereo(&mut registry);
     audio_encoding::register_encoding(&mut audio, TestAudioVerifier(), BLOB_ID);
-    let events_before = event::num_events();
     audio_encoding::register_encoding(&mut audio, TestAudioVerifier(), BLOB_ID);
-    assert_eq!(event::num_events(), events_before);
-    destroy(audio);
-    destroy(registry);
+    abort
 }

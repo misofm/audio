@@ -6,6 +6,10 @@ module audio::audio_encoding;
 use audio::audio::Audio;
 use sui::{dynamic_field, event::emit};
 
+// === Errors ===
+
+const EAlreadyRegistered: u64 = 0;
+
 // === Structs ===
 
 public struct AudioEncodingKey<phantom AudioEncodingVerifier>(u256) has copy, drop, store;
@@ -30,7 +34,7 @@ public fun register_encoding<AudioVerifier, AudioEncodingVerifier: drop>(
     let audio_id = object::id(audio);
     let uid = audio.uid_mut();
     let key = AudioEncodingKey<AudioEncodingVerifier>(blob_id);
-    if (dynamic_field::exists(uid, key)) return;
+    assert!(!dynamic_field::exists(uid, key), EAlreadyRegistered);
     dynamic_field::add(uid, key, true);
     emit(AudioEncodingRegisteredEvent<AudioVerifier, AudioEncodingVerifier> { audio_id, blob_id });
 }
