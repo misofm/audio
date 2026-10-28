@@ -8,7 +8,6 @@ use audio::{
     audio::{Self, Audio, AudioRegistry},
     audio_encoding::{Self, AudioEncodingRegisteredEvent}
 };
-use ori::{confidentiality, data};
 use std::unit_test::{assert_eq, destroy};
 use sui::event;
 
@@ -39,10 +38,6 @@ fun register_encoding_records_the_blob_and_emits_it() {
     assert!(!audio_encoding::has_encoding<_, TestAudioVerifier>(&audio, BLOB_ID));
     audio_encoding::register_encoding(&mut audio, TestAudioVerifier(), BLOB_ID);
     assert!(audio_encoding::has_encoding<_, TestAudioVerifier>(&audio, BLOB_ID));
-    assert_eq!(
-        audio_encoding::encoding<_, TestAudioVerifier>(&audio, BLOB_ID),
-        data::new_blob(BLOB_ID, confidentiality::new_unencrypted()),
-    );
     let events = event::events_by_type<
         AudioEncodingRegisteredEvent<TestAudioVerifier, TestAudioVerifier>,
     >();
@@ -101,14 +96,4 @@ fun registering_an_encoding_twice_is_silent() {
     assert_eq!(event::num_events(), events_before);
     destroy(audio);
     destroy(registry);
-}
-
-// === Aborts ===
-
-#[test, expected_failure(abort_code = audio_encoding::ENoEncoding)]
-fun encoding_without_the_blob_aborts() {
-    let mut registry = audio::new_registry_for_testing(&mut tx_context::dummy());
-    let audio = stereo(&mut registry);
-    audio_encoding::encoding<_, TestAudioVerifier>(&audio, BLOB_ID);
-    abort
 }

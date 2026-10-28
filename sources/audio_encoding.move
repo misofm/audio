@@ -4,12 +4,7 @@
 module audio::audio_encoding;
 
 use audio::audio::Audio;
-use ori::{confidentiality, data::{Self, WalrusBlob}};
 use sui::{dynamic_field, event::emit};
-
-// === Errors ===
-
-const ENoEncoding: u64 = 0;
 
 // === Structs ===
 
@@ -47,14 +42,6 @@ public fun has_encoding<AudioVerifier, AudioEncodingVerifier>(
     blob_id: u256,
 ): bool {
     dynamic_field::exists(audio.uid(), AudioEncodingKey<AudioEncodingVerifier>(blob_id))
-}
-
-public fun encoding<AudioVerifier, AudioEncodingVerifier>(
-    audio: &Audio<AudioVerifier>,
-    blob_id: u256,
-): WalrusBlob {
-    assert!(has_encoding<AudioVerifier, AudioEncodingVerifier>(audio, blob_id), ENoEncoding);
-    data::new_blob(blob_id, confidentiality::new_unencrypted())
 }
 
 // === Test Functions ===

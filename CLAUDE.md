@@ -19,8 +19,8 @@ Audio. Tests are in `tests/audio_tests.move` and
 - Encodings are `AudioEncodingKey<AudioEncodingVerifier>(blob_id) → true` on
   the Audio, registered with `audio_encoding::register_encoding` under the encoding verifier's
   own witness type, write-once, never removed. `audio_encoding` reaches the
-  Audio's UID through the package-only `uid_mut`. Formats are not stored. ori
-  (`WalrusBlob`) is pinned at the same rev as `misofm/cover-art`.
+  Audio's UID through the package-only `uid_mut`. Formats are not stored. Blobs are plain `u256` Walrus
+  blob IDs; there is no ori dependency.
 - Audio means integer linear PCM. Float PCM or DSD would be separate types.
 - PCM digests are unkeyed BLAKE3 with the default 32-byte output, over the spec
   in the README.
