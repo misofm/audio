@@ -10,9 +10,9 @@ use sui::{derived_object, dynamic_field, event::emit};
 
 // === Errors ===
 
-const EInvalidSampleRate: u64 = 0;
-const EInvalidChannels: u64 = 1;
-const EInvalidBitDepth: u64 = 2;
+const EInvalidChannels: u64 = 0;
+const EInvalidBitDepth: u64 = 1;
+const EInvalidSampleRate: u64 = 2;
 const EInvalidSamplesPerChannel: u64 = 3;
 const EInvalidDuration: u64 = 4;
 const EInvalidDigestLength: u64 = 5;
@@ -28,9 +28,9 @@ const PCM_DIGEST_LENGTH: u64 = 32;
 
 public struct Audio<phantom AudioVerifier> has key {
     id: UID,
-    sample_rate_hz: u32,
     channels: u8,
     bit_depth: u8,
+    sample_rate_hz: u32,
     samples_per_channel: u64,
     pcm_digest: vector<u8>,
 }
@@ -40,9 +40,9 @@ public struct AudioRegistry has key {
 }
 
 public struct AudioKey<phantom AudioVerifier> has copy, drop, store {
-    sample_rate_hz: u32,
     channels: u8,
     bit_depth: u8,
+    sample_rate_hz: u32,
     samples_per_channel: u64,
     pcm_digest: vector<u8>,
 }
@@ -53,9 +53,9 @@ public struct AudioEncodingKey(u256) has copy, drop, store;
 
 public struct AudioCreatedEvent<phantom AudioVerifier> has copy, drop {
     audio_id: ID,
-    sample_rate_hz: u32,
     channels: u8,
     bit_depth: u8,
+    sample_rate_hz: u32,
     samples_per_channel: u64,
     pcm_digest: vector<u8>,
 }
@@ -76,15 +76,15 @@ fun init(ctx: &mut TxContext) {
 public fun new<AudioVerifier: drop>(
     registry: &mut AudioRegistry,
     _: AudioVerifier,
-    sample_rate_hz: u32,
     channels: u8,
     bit_depth: u8,
+    sample_rate_hz: u32,
     samples_per_channel: u64,
     pcm_digest: vector<u8>,
 ): Audio<AudioVerifier> {
-    assert!(sample_rate_hz > 0, EInvalidSampleRate);
     assert!(channels > 0, EInvalidChannels);
     assert!(bit_depth > 0 && bit_depth <= MAX_BIT_DEPTH, EInvalidBitDepth);
+    assert!(sample_rate_hz > 0, EInvalidSampleRate);
     assert!(samples_per_channel > 0, EInvalidSamplesPerChannel);
     assert!(
         ((samples_per_channel as u128) * 1_000 / (sample_rate_hz as u128)).try_as_u64().is_some(),
@@ -92,9 +92,9 @@ public fun new<AudioVerifier: drop>(
     );
     assert!(pcm_digest.length() == PCM_DIGEST_LENGTH, EInvalidDigestLength);
     let key = AudioKey<AudioVerifier> {
-        sample_rate_hz,
         channels,
         bit_depth,
+        sample_rate_hz,
         samples_per_channel,
         pcm_digest,
     };
@@ -102,13 +102,13 @@ public fun new<AudioVerifier: drop>(
     let id = derived_object::claim(&mut registry.id, key);
     emit(AudioCreatedEvent<AudioVerifier> {
         audio_id: id.to_inner(),
-        sample_rate_hz,
         channels,
         bit_depth,
+        sample_rate_hz,
         samples_per_channel,
         pcm_digest,
     });
-    Audio { id, sample_rate_hz, channels, bit_depth, samples_per_channel, pcm_digest }
+    Audio { id, channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest }
 }
 
 public fun add_encoding<AudioVerifier: drop>(
@@ -128,16 +128,16 @@ public fun share<AudioVerifier>(audio: Audio<AudioVerifier>) {
 
 // === View Functions ===
 
-public fun sample_rate_hz<AudioVerifier>(audio: &Audio<AudioVerifier>): u32 {
-    audio.sample_rate_hz
-}
-
 public fun channels<AudioVerifier>(audio: &Audio<AudioVerifier>): u8 {
     audio.channels
 }
 
 public fun bit_depth<AudioVerifier>(audio: &Audio<AudioVerifier>): u8 {
     audio.bit_depth
+}
+
+public fun sample_rate_hz<AudioVerifier>(audio: &Audio<AudioVerifier>): u32 {
+    audio.sample_rate_hz
 }
 
 public fun samples_per_channel<AudioVerifier>(audio: &Audio<AudioVerifier>): u64 {
@@ -163,18 +163,18 @@ public fun encoding<AudioVerifier>(audio: &Audio<AudioVerifier>, blob_id: u256):
 
 public fun derive_address<AudioVerifier>(
     registry_id: ID,
-    sample_rate_hz: u32,
     channels: u8,
     bit_depth: u8,
+    sample_rate_hz: u32,
     samples_per_channel: u64,
     pcm_digest: vector<u8>,
 ): address {
     derived_object::derive_address(
         registry_id,
         AudioKey<AudioVerifier> {
-            sample_rate_hz,
             channels,
             bit_depth,
+            sample_rate_hz,
             samples_per_channel,
             pcm_digest,
         },
@@ -196,12 +196,12 @@ public fun new_registry_for_testing(ctx: &mut TxContext): AudioRegistry {
 #[test_only]
 public fun audio_created_event_fields<AudioVerifier>(
     event: &AudioCreatedEvent<AudioVerifier>,
-): (ID, u32, u8, u8, u64, vector<u8>) {
+): (ID, u8, u8, u32, u64, vector<u8>) {
     (
         event.audio_id,
-        event.sample_rate_hz,
         event.channels,
         event.bit_depth,
+        event.sample_rate_hz,
         event.samples_per_channel,
         event.pcm_digest,
     )

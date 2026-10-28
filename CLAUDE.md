@@ -10,9 +10,10 @@ Move 2024 package. Implementation is in `sources/audio.move`; tests are in
   created only by `new<AudioVerifier: drop>` with the verifier's witness. Its
   facts never change. Verification logic lives in verifier packages such as
   `misofm/audio-verifier`, never here.
-- Field order everywhere is `sample_rate_hz, channels, bit_depth,
-  samples_per_channel, pcm_digest`, as in FLAC STREAMINFO. It is part of the
-  key's BCS, so it fixes every derived address; don't change it.
+- Field order everywhere is `channels, bit_depth, sample_rate_hz,
+  samples_per_channel, pcm_digest`: frame shape, then time, then content, as in
+  the verifier's signed payload. It is part of the key's BCS, so it fixes every
+  derived address; don't change it.
 - Encodings are `AudioEncodingKey(blob_id) → true` on the Audio, write-once,
   never removed. Formats are not stored. ori (`WalrusBlob`) is pinned at the
   same rev as `misofm/cover-art`.

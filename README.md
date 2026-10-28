@@ -5,7 +5,7 @@
 
 > One canonical, verified record per lossless audio on [Sui](https://sui.io).
 
-`Audio<AudioVerifier>` is a shared object holding the facts an `AudioVerifier` type measured about some integer PCM audio: sample rate, channels, bit depth, samples per channel and a PCM digest. Only code holding an `AudioVerifier` witness can create one, so the type parameter names who measured the audio. There is no self-attested audio.
+`Audio<AudioVerifier>` is a shared object holding the facts an `AudioVerifier` type measured about some integer PCM audio: channels, bit depth, sample rate, samples per channel and a PCM digest. Only code holding an `AudioVerifier` witness can create one, so the type parameter names who measured the audio. There is no self-attested audio.
 
 Audio records what the audio is, not who owns it. Anyone with a file can have it measured. Rights live elsewhere: recordings point at an Audio, they don't own it.
 
@@ -14,15 +14,15 @@ Audio records what the audio is, not who owns it. Anyone with a file can have it
 ```move
 public struct Audio<phantom AudioVerifier> has key {
     id: UID,
-    sample_rate_hz: u32,
     channels: u8,
     bit_depth: u8,
+    sample_rate_hz: u32,
     samples_per_channel: u64,
     pcm_digest: vector<u8>,
 }
 ```
 
-- **One Audio per verifier and facts.** Each Audio is a derived object of the shared `AudioRegistry`, claimed with the key `AudioKey<AudioVerifier> { sample_rate_hz, channels, bit_depth, samples_per_channel, pcm_digest }`. Its ID is a function of the registry ID, the verifier type and the five facts, so clients holding a file can find its Audio with `derive_address` and plain RPC. The digest alone doesn't commit to how the samples are played, so the same digest with other facts is other audio.
+- **One Audio per verifier and facts.** Each Audio is a derived object of the shared `AudioRegistry`, claimed with the key `AudioKey<AudioVerifier> { channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest }`, in that order: the shape of a frame, then time, then content, the same order as the verifier's signed payload. Its ID is a function of the registry ID, the verifier type and the five facts, so clients holding a file can find its Audio with `derive_address` and plain RPC. The digest alone doesn't commit to how the samples are played, so the same digest with other facts is other audio.
 - **The facts never change.** Audio has no setters. It is shared rather than frozen only so verifiers can attach encodings.
 - **Encodings** are the files known to decode to the Audio: a dynamic field `AudioEncodingKey(blob_id) → true` per unencrypted Walrus blob, written once by the verifier and never removed. Walrus blob IDs are content-addressed, so an expired file can be stored again under the same ID. The file's format is not stored; audio files identify themselves by their first bytes.
 - Audio has only `key`, so it can't be wrapped, transferred or dropped. `new` returns it unshared, so the same transaction can attach its first encoding and point records at it, and `share` is the only way to finish with it.
@@ -31,19 +31,19 @@ public struct Audio<phantom AudioVerifier> has key {
 
 | Function | Gate | What it does |
 |---|---|---|
-| `new<AudioVerifier: drop>(registry, witness, sample_rate_hz, channels, bit_depth, samples_per_channel, pcm_digest)` | witness | Checks the facts, claims the Audio from the registry and emits `AudioCreatedEvent`. Aborts `EAudioExists` if it is already registered. |
+| `new<AudioVerifier: drop>(registry, witness, channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest)` | witness | Checks the facts, claims the Audio from the registry and emits `AudioCreatedEvent`. Aborts `EAudioExists` if it is already registered. |
 | `add_encoding<AudioVerifier: drop>(audio, witness, blob_id)` | witness | Records a blob as an encoding and emits `AudioEncodingAddedEvent`. Adding it again does nothing. |
 | `share<AudioVerifier>(audio)` | none | Shares a new Audio. |
-| `derive_address<AudioVerifier>(registry_id, sample_rate_hz, channels, bit_depth, samples_per_channel, pcm_digest)` | none | The Audio's address for those facts. |
+| `derive_address<AudioVerifier>(registry_id, channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest)` | none | The Audio's address for those facts. |
 | `has_encoding(audio, blob_id)`, `encoding(audio, blob_id)` | none | Whether a blob is an encoding, and its unencrypted `ori::data::WalrusBlob`. `encoding` aborts `ENoEncoding` otherwise. |
 
-Views: `sample_rate_hz`, `channels`, `bit_depth`, `samples_per_channel`, `pcm_digest`, and `duration_ms`, which rounds down and never aborts, because `new` bounds the duration.
+Views: `channels`, `bit_depth`, `sample_rate_hz`, `samples_per_channel`, `pcm_digest`, and `duration_ms`, which rounds down and never aborts, because `new` bounds the duration.
 
 | Fact | Rule | Error |
 |---|---|---|
-| `sample_rate_hz` | at least 1 | `EInvalidSampleRate` (0) |
-| `channels` | at least 1 | `EInvalidChannels` (1) |
-| `bit_depth` | 1 to 32 | `EInvalidBitDepth` (2) |
+| `channels` | at least 1 | `EInvalidChannels` (0) |
+| `bit_depth` | 1 to 32 | `EInvalidBitDepth` (1) |
+| `sample_rate_hz` | at least 1 | `EInvalidSampleRate` (2) |
 | `samples_per_channel` | at least 1, and the duration in milliseconds fits in a `u64` | `EInvalidSamplesPerChannel` (3), `EInvalidDuration` (4) |
 | `pcm_digest` | exactly 32 bytes | `EInvalidDigestLength` (5) |
 
@@ -56,14 +56,14 @@ Views: `sample_rate_hz`, `channels`, `bit_depth`, `samples_per_channel`, `pcm_di
 
 ## Events
 
-- `AudioCreatedEvent<AudioVerifier> { audio_id, sample_rate_hz, channels, bit_depth, samples_per_channel, pcm_digest }` from `new`.
+- `AudioCreatedEvent<AudioVerifier> { audio_id, channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest }` from `new`.
 - `AudioEncodingAddedEvent<AudioVerifier> { audio_id, blob_id }` from `add_encoding`, once per blob.
 
 ## Audio and the PCM digest
 
 Audio means integer linear PCM: `bit_depth` is the integer sample width. Floating-point PCM and DSD are not Audio; if they are ever supported, they get their own types and keys.
 
-`pcm_digest` is BLAKE3, with the default 32-byte output, over the decoded PCM, interleaved by sample frame. Each sample is a signed integer, little-endian, `ceil(bit_depth / 8)` bytes, two's complement, right-aligned (sign-extended within those bytes). It hashes the samples, not the file, so the same PCM gives the same digest in any format. It doesn't cover the sample rate, channels or bit depth, which is why they are part of the key.
+`pcm_digest` is BLAKE3, with the default 32-byte output, over the decoded PCM, interleaved by sample frame. Each sample is a signed integer, little-endian, `ceil(bit_depth / 8)` bytes, two's complement, right-aligned (sign-extended within those bytes). It hashes the samples, not the file, so the same PCM gives the same digest in any format. It doesn't cover the channels, bit depth or sample rate, which is why they are part of the key.
 
 ## Install
 
