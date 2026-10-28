@@ -1,7 +1,9 @@
 # audio
 
-Move 2024 package. Implementation is in `sources/audio.move`; tests are in
-`tests/audio_tests.move`.
+Move 2024 package. `sources/audio.move` holds the registry, `Audio` and its
+facts; `sources/audio_encoding.move` holds the encodings registered on an
+Audio. Tests are in `tests/audio_tests.move` and
+`tests/audio_encoding_tests.move`.
 
 ## Project Rules
 
@@ -15,8 +17,9 @@ Move 2024 package. Implementation is in `sources/audio.move`; tests are in
   the verifier's signed payload. It is part of the key's BCS, so it fixes every
   derived address; don't change it.
 - Encodings are `AudioEncodingKey<AudioEncodingVerifier>(blob_id) → true` on
-  the Audio, registered with `register_encoding` under the encoding verifier's
-  own witness type, write-once, never removed. Formats are not stored. ori
+  the Audio, registered with `audio_encoding::register_encoding` under the encoding verifier's
+  own witness type, write-once, never removed. `audio_encoding` reaches the
+  Audio's UID through the package-only `uid_mut`. Formats are not stored. ori
   (`WalrusBlob`) is pinned at the same rev as `misofm/cover-art`.
 - Audio means integer linear PCM. Float PCM or DSD would be separate types.
 - PCM digests are unkeyed BLAKE3 with the default 32-byte output, over the spec

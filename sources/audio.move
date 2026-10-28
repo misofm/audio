@@ -3,10 +3,7 @@
 
 module audio::audio;
 
-use ori::{confidentiality, data::{Self, WalrusBlob}};
-use sui::{derived_object, dynamic_field, event::emit};
-
-// === Imports ===
+use sui::{derived_object, event::emit};
 
 // === Errors ===
 
@@ -17,7 +14,6 @@ const EInvalidSamplesPerChannel: u64 = 3;
 const EInvalidDuration: u64 = 4;
 const EInvalidDigestLength: u64 = 5;
 const EAudioExists: u64 = 6;
-const ENoEncoding: u64 = 7;
 
 // === Constants ===
 
@@ -47,8 +43,6 @@ public struct AudioKey<phantom AudioVerifier> has copy, drop, store {
     pcm_digest: vector<u8>,
 }
 
-public struct AudioEncodingKey<phantom AudioEncodingVerifier>(u256) has copy, drop, store;
-
 // === Events ===
 
 public struct AudioCreatedEvent<phantom AudioVerifier> has copy, drop {
@@ -58,14 +52,6 @@ public struct AudioCreatedEvent<phantom AudioVerifier> has copy, drop {
     sample_rate_hz: u32,
     samples_per_channel: u64,
     pcm_digest: vector<u8>,
-}
-
-public struct AudioEncodingRegisteredEvent<
-    phantom AudioVerifier,
-    phantom AudioEncodingVerifier,
-> has copy, drop {
-    audio_id: ID,
-    blob_id: u256,
 }
 
 // === Init ===
@@ -114,20 +100,6 @@ public fun new<AudioVerifier: drop>(
     Audio { id, channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest }
 }
 
-public fun register_encoding<AudioVerifier, AudioEncodingVerifier: drop>(
-    audio: &mut Audio<AudioVerifier>,
-    _: AudioEncodingVerifier,
-    blob_id: u256,
-) {
-    let key = AudioEncodingKey<AudioEncodingVerifier>(blob_id);
-    if (dynamic_field::exists(&audio.id, key)) return;
-    dynamic_field::add(&mut audio.id, key, true);
-    emit(AudioEncodingRegisteredEvent<AudioVerifier, AudioEncodingVerifier> {
-        audio_id: audio.id.to_inner(),
-        blob_id,
-    });
-}
-
 public fun share<AudioVerifier>(audio: Audio<AudioVerifier>) {
     transfer::share_object(audio);
 }
@@ -158,19 +130,8 @@ public fun duration_ms<AudioVerifier>(audio: &Audio<AudioVerifier>): u64 {
     audio.samples_per_channel.mul_div(1_000, audio.sample_rate_hz as u64)
 }
 
-public fun has_encoding<AudioVerifier, AudioEncodingVerifier>(
-    audio: &Audio<AudioVerifier>,
-    blob_id: u256,
-): bool {
-    dynamic_field::exists(&audio.id, AudioEncodingKey<AudioEncodingVerifier>(blob_id))
-}
-
-public fun encoding<AudioVerifier, AudioEncodingVerifier>(
-    audio: &Audio<AudioVerifier>,
-    blob_id: u256,
-): WalrusBlob {
-    assert!(has_encoding<AudioVerifier, AudioEncodingVerifier>(audio, blob_id), ENoEncoding);
-    data::new_blob(blob_id, confidentiality::new_unencrypted())
+public fun uid<AudioVerifier>(audio: &Audio<AudioVerifier>): &UID {
+    &audio.id
 }
 
 public fun derive_address<AudioVerifier>(
@@ -191,6 +152,12 @@ public fun derive_address<AudioVerifier>(
             pcm_digest,
         },
     )
+}
+
+// === Package Functions ===
+
+public(package) fun uid_mut<AudioVerifier>(audio: &mut Audio<AudioVerifier>): &mut UID {
+    &mut audio.id
 }
 
 // === Test Functions ===
@@ -217,11 +184,4 @@ public fun audio_created_event_fields<AudioVerifier>(
         event.samples_per_channel,
         event.pcm_digest,
     )
-}
-
-#[test_only]
-public fun audio_encoding_registered_event_fields<AudioVerifier, AudioEncodingVerifier>(
-    event: &AudioEncodingRegisteredEvent<AudioVerifier, AudioEncodingVerifier>,
-): (ID, u256) {
-    (event.audio_id, event.blob_id)
 }

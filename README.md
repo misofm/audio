@@ -9,6 +9,11 @@
 
 Audio records what the audio is, not who owns it. Anyone with a file can have it measured. Rights live elsewhere: recordings point at an Audio, they don't own it.
 
+## Modules
+
+- `audio::audio`: the registry, `Audio` and its facts.
+- `audio::audio_encoding`: the files registered on an Audio.
+
 ## Objects
 
 ```move
@@ -32,10 +37,12 @@ public struct Audio<phantom AudioVerifier> has key {
 | Function | Gate | What it does |
 |---|---|---|
 | `new<AudioVerifier: drop>(registry, witness, channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest)` | witness | Checks the facts, claims the Audio from the registry and emits `AudioCreatedEvent`. Aborts `EAudioExists` if it is already registered. |
-| `register_encoding<AudioVerifier, AudioEncodingVerifier: drop>(audio, witness, blob_id)` | encoding witness | Registers a blob as an encoding under the witness's type and emits `AudioEncodingRegisteredEvent`. Registering it again does nothing. |
+| `audio_encoding::register_encoding<AudioVerifier, AudioEncodingVerifier: drop>(audio, witness, blob_id)` | encoding witness | Registers a blob as an encoding under the witness's type and emits `AudioEncodingRegisteredEvent`. Registering it again does nothing. |
 | `share<AudioVerifier>(audio)` | none | Shares a new Audio. |
 | `derive_address<AudioVerifier>(registry_id, channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest)` | none | The Audio's address for those facts. |
-| `has_encoding<AudioVerifier, AudioEncodingVerifier>(audio, blob_id)`, `encoding<AudioVerifier, AudioEncodingVerifier>(audio, blob_id)` | none | Whether that encoding verifier registered the blob, and its unencrypted `ori::data::WalrusBlob`. `encoding` aborts `ENoEncoding` otherwise. |
+| `audio_encoding::has_encoding<AudioVerifier, AudioEncodingVerifier>(audio, blob_id)`, `audio_encoding::encoding<AudioVerifier, AudioEncodingVerifier>(audio, blob_id)` | none | Whether that encoding verifier registered the blob, and its unencrypted `ori::data::WalrusBlob`. `encoding` aborts `audio_encoding::ENoEncoding` (0) otherwise. |
+
+`uid` exposes the Audio's UID for reading; `uid_mut` is package-only, for `audio_encoding`.
 
 Views: `channels`, `bit_depth`, `sample_rate_hz`, `samples_per_channel`, `pcm_digest`, and `duration_ms`, which rounds down and never aborts, because `new` bounds the duration.
 
@@ -58,7 +65,7 @@ Views: `channels`, `bit_depth`, `sample_rate_hz`, `samples_per_channel`, `pcm_di
 ## Events
 
 - `AudioCreatedEvent<AudioVerifier> { audio_id, channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest }` from `new`.
-- `AudioEncodingRegisteredEvent<AudioVerifier, AudioEncodingVerifier> { audio_id, blob_id }` from `register_encoding`, once per encoding verifier and blob.
+- `audio_encoding::AudioEncodingRegisteredEvent<AudioVerifier, AudioEncodingVerifier> { audio_id, blob_id }` from `register_encoding`, once per encoding verifier and blob.
 
 ## Audio and the PCM digest
 
