@@ -3,67 +3,67 @@
 [![License: FSL-1.1-ALv2](https://img.shields.io/badge/license-FSL--1.1--ALv2-blue.svg)](LICENSE.md)
 [![Move](https://img.shields.io/badge/Move-2024-black.svg)](https://docs.sui.io/concepts/sui-move-concepts)
 
-> Verified lossless audio as a composable on-chain value for [Sui](https://sui.io).
+> One canonical, verified record per lossless audio on [Sui](https://sui.io).
 
-`Audio<AudioVerifier>` is a set of lossless audio facts vouched for by an `AudioVerifier` type: channels, bit depth, sample rate, samples per channel, a PCM digest and an unencrypted Walrus blob. Only code holding an `AudioVerifier` witness can call `new`, so the type parameter names who measured the audio. There is no self-attested audio.
+`Audio<AudioVerifier>` is a shared object holding the facts an `AudioVerifier` type measured about some integer PCM audio: sample rate, channels, bit depth, samples per channel and a PCM digest. Only code holding an `AudioVerifier` witness can create one, so the type parameter names who measured the audio. There is no self-attested audio.
+
+Audio records what the audio is, not who owns it. Anyone with a file can have it measured. Rights live elsewhere: recordings point at an Audio, they don't own it.
+
+## Objects
+
+```move
+public struct Audio<phantom AudioVerifier> has key {
+    id: UID,
+    sample_rate_hz: u32,
+    channels: u8,
+    bit_depth: u8,
+    samples_per_channel: u64,
+    pcm_digest: vector<u8>,
+}
+```
+
+- **One Audio per verifier and facts.** Each Audio is a derived object of the shared `AudioRegistry`, claimed with the key `AudioKey<AudioVerifier> { sample_rate_hz, channels, bit_depth, samples_per_channel, pcm_digest }`. Its ID is a function of the registry ID, the verifier type and the five facts, so clients holding a file can find its Audio with `derive_address` and plain RPC. The digest alone doesn't commit to how the samples are played, so the same digest with other facts is other audio.
+- **The facts never change.** Audio has no setters. It is shared rather than frozen only so verifiers can attach encodings.
+- **Encodings** are the files known to decode to the Audio: a dynamic field `AudioEncodingKey(blob_id) → true` per unencrypted Walrus blob, written once by the verifier and never removed. Walrus blob IDs are content-addressed, so an expired file can be stored again under the same ID. The file's format is not stored; audio files identify themselves by their first bytes.
+- Audio has only `key`, so it can't be wrapped, transferred or dropped. `new` returns it unshared, so the same transaction can attach its first encoding and point records at it, and `share` is the only way to finish with it.
+
+## API
+
+| Function | Gate | What it does |
+|---|---|---|
+| `new<AudioVerifier: drop>(registry, witness, sample_rate_hz, channels, bit_depth, samples_per_channel, pcm_digest)` | witness | Checks the facts, claims the Audio from the registry and emits `AudioCreatedEvent`. Aborts `EAudioExists` if it is already registered. |
+| `add_encoding<AudioVerifier: drop>(audio, witness, blob_id)` | witness | Records a blob as an encoding and emits `AudioEncodingAddedEvent`. Adding it again does nothing. |
+| `share<AudioVerifier>(audio)` | none | Shares a new Audio. |
+| `derive_address<AudioVerifier>(registry_id, sample_rate_hz, channels, bit_depth, samples_per_channel, pcm_digest)` | none | The Audio's address for those facts. |
+| `has_encoding(audio, blob_id)`, `encoding(audio, blob_id)` | none | Whether a blob is an encoding, and its unencrypted `ori::data::WalrusBlob`. `encoding` aborts `ENoEncoding` otherwise. |
+
+Views: `sample_rate_hz`, `channels`, `bit_depth`, `samples_per_channel`, `pcm_digest`, and `duration_ms`, which rounds down and never aborts, because `new` bounds the duration.
+
+| Fact | Rule | Error |
+|---|---|---|
+| `sample_rate_hz` | at least 1 | `EInvalidSampleRate` (0) |
+| `channels` | at least 1 | `EInvalidChannels` (1) |
+| `bit_depth` | 1 to 32 | `EInvalidBitDepth` (2) |
+| `samples_per_channel` | at least 1, and the duration in milliseconds fits in a `u64` | `EInvalidSamplesPerChannel` (3), `EInvalidDuration` (4) |
+| `pcm_digest` | exactly 32 bytes | `EInvalidDigestLength` (5) |
+
+`new` checks the shape of the facts only. Reading the file and computing the digest is the verifier's job.
 
 ## Trust
 
 - **Pin the verifier types you trust.** Accept `Audio<SomeVerifier>`, never a generic `Audio<AudioVerifier>` treated as trusted: anyone can publish a package with a witness and vouch for anything.
-- **Store audio from several verifiers under type-keyed dynamic fields**, not a fixed field typed to one verifier, so a new verifier can be added later.
-- `Audio` has `copy, drop, store` and no `key`. Copying it copies facts and a blob reference, not authority.
+- Several verifiers can measure the same audio. Each gets its own Audio, because the verifier type is part of the key.
 
-```move
-public struct Audio<phantom AudioVerifier> has copy, drop, store {
-    channels: u8,
-    bit_depth: u8,
-    sample_rate_hz: u32,
-    samples_per_channel: u64,
-    pcm_digest: vector<u8>,
-    blob: WalrusBlob,
-}
+## Events
 
-public fun new<AudioVerifier: drop>(
-    _: AudioVerifier,
-    format: String,
-    channels: u8,
-    bit_depth: u8,
-    sample_rate_hz: u32,
-    samples_per_channel: u64,
-    pcm_digest: vector<u8>,
-    blob: WalrusBlob,
-): Audio<AudioVerifier>
-```
+- `AudioCreatedEvent<AudioVerifier> { audio_id, sample_rate_hz, channels, bit_depth, samples_per_channel, pcm_digest }` from `new`.
+- `AudioEncodingAddedEvent<AudioVerifier> { audio_id, blob_id }` from `add_encoding`, once per blob.
 
-`new` checks the shape of the facts and emits `AudioCreatedEvent<AudioVerifier>` with all of them, including `format` and `blob_id`. It does not read the blob or check the digest; that is the verifier's job.
+## Audio and the PCM digest
 
-| Fact | Rule |
-|---|---|
-| `format` | 1 to 16 bytes, `a`–`z` and `0`–`9`. Emitted, not stored. |
-| `blob` | `ori::data::WalrusBlob`, not encrypted |
-| `channels` | at least 1 |
-| `bit_depth` | 1 to 32 |
-| `sample_rate_hz` | at least 1 |
-| `samples_per_channel` | at least 1, and the duration in milliseconds fits in a `u64` |
-| `pcm_digest` | exactly 32 bytes |
+Audio means integer linear PCM: `bit_depth` is the integer sample width. Floating-point PCM and DSD are not Audio; if they are ever supported, they get their own types and keys.
 
-Views: `channels`, `bit_depth`, `sample_rate_hz`, `samples_per_channel`, `pcm_digest`, `blob`, and `duration_ms`, which rounds down and never aborts, because `new` bounds the duration.
-
-## Formats
-
-`format` names the codec, which implies its standard container.
-
-| Name | Audio |
-|---|---|
-| `flac` | FLAC, native `.flac` |
-| `wav` | PCM in RIFF WAVE |
-| `aiff` | PCM in AIFF |
-| `alac` | Apple Lossless in M4A |
-| `wv` | WavPack |
-
-## PCM digest
-
-`pcm_digest` is BLAKE3, with the default 32-byte output, over the decoded PCM, interleaved by sample frame. Each sample is a signed integer, little-endian, `ceil(bit_depth / 8)` bytes, two's complement, right-aligned (sign-extended within those bytes). It hashes the audio, not the file, so the same PCM gives the same digest in any format.
+`pcm_digest` is BLAKE3, with the default 32-byte output, over the decoded PCM, interleaved by sample frame. Each sample is a signed integer, little-endian, `ceil(bit_depth / 8)` bytes, two's complement, right-aligned (sign-extended within those bytes). It hashes the samples, not the file, so the same PCM gives the same digest in any format. It doesn't cover the sample rate, channels or bit depth, which is why they are part of the key.
 
 ## Install
 
@@ -74,7 +74,7 @@ Pin a commit:
 audio = { git = "https://github.com/misofm/audio.git", rev = "<commit>" }
 ```
 
-The package depends on [ori](https://github.com/unconfirmedlabs/ori) at `effc16a7f4efc334ffa8f39effcc9e7bbc3f837c`, so `WalrusBlob` is the same type as in `misofm/cover-art`.
+The package depends on [ori](https://github.com/unconfirmedlabs/ori) at `effc16a7f4efc334ffa8f39effcc9e7bbc3f837c`, so the `WalrusBlob` that `encoding` returns is the same type as in `misofm/cover-art`.
 
 ## Build & test
 
@@ -85,7 +85,7 @@ sui move test --coverage
 
 ## Deployments
 
-This API has not been published. The previous, self-attested API was published at:
+This API has not been published. `init` shares the `AudioRegistry` at publish. The previous, self-attested API was published at:
 
 - mainnet `0x73a989640258bd5d82e0ae23bcb6f874fae65c78aecc1781b9a702801a043d7e`
 - testnet `0x7b143c3408e5fc8964e7ee696c9d4b63b6d0464347797e32bfa43275f09a3b08`

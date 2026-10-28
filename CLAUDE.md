@@ -5,12 +5,18 @@ Move 2024 package. Implementation is in `sources/audio.move`; tests are in
 
 ## Project Rules
 
-- `Audio<phantom AudioVerifier>` is created only by `new<AudioVerifier: drop>` with the
-  verifier's witness. There is no self-attested audio; verification logic lives
-  in verifier packages such as `misofm/verified-audio`, never here.
-- The blob is an `ori::data::WalrusBlob` pinned at the same ori rev as
-  `misofm/cover-art`, and must not be encrypted.
-- `format` is validated and emitted in `AudioCreatedEvent<AudioVerifier>`, not stored.
+- `Audio<phantom AudioVerifier>` is a `key`-only shared object, derived from the
+  shared `AudioRegistry` by `AudioKey<AudioVerifier>` over the five facts, and
+  created only by `new<AudioVerifier: drop>` with the verifier's witness. Its
+  facts never change. Verification logic lives in verifier packages such as
+  `misofm/audio-verifier`, never here.
+- Field order everywhere is `sample_rate_hz, channels, bit_depth,
+  samples_per_channel, pcm_digest`, as in FLAC STREAMINFO. It is part of the
+  key's BCS, so it fixes every derived address; don't change it.
+- Encodings are `AudioEncodingKey(blob_id) → true` on the Audio, write-once,
+  never removed. Formats are not stored. ori (`WalrusBlob`) is pinned at the
+  same rev as `misofm/cover-art`.
+- Audio means integer linear PCM. Float PCM or DSD would be separate types.
 - PCM digests are unkeyed BLAKE3 with the default 32-byte output, over the spec
   in the README.
 - Follow the misofm brain MOVE-STANDARDS: no comments except the license header

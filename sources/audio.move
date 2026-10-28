@@ -3,145 +3,213 @@
 
 module audio::audio;
 
-// === Imports ===
+use ori::{confidentiality, data::{Self, WalrusBlob}};
+use sui::{derived_object, dynamic_field, event::emit};
 
-use std::string::String;
-use sui::event::emit;
-use ori::data::WalrusBlob;
+// === Imports ===
 
 // === Errors ===
 
-const EEmptyFormat: u64 = 0;
-const EFormatTooLong: u64 = 1;
-const EInvalidFormatChar: u64 = 2;
-const EEncryptedBlob: u64 = 3;
-const EInvalidChannels: u64 = 4;
-const EInvalidBitDepth: u64 = 5;
-const EInvalidSampleRate: u64 = 6;
-const EInvalidSamplesPerChannel: u64 = 7;
-const EInvalidDuration: u64 = 8;
-const EInvalidDigestLength: u64 = 9;
+const EInvalidSampleRate: u64 = 0;
+const EInvalidChannels: u64 = 1;
+const EInvalidBitDepth: u64 = 2;
+const EInvalidSamplesPerChannel: u64 = 3;
+const EInvalidDuration: u64 = 4;
+const EInvalidDigestLength: u64 = 5;
+const EAudioExists: u64 = 6;
+const ENoEncoding: u64 = 7;
 
 // === Constants ===
 
-const MAX_FORMAT_LENGTH: u64 = 16;
 const MAX_BIT_DEPTH: u8 = 32;
 const PCM_DIGEST_LENGTH: u64 = 32;
 
 // === Structs ===
 
-public struct Audio<phantom AudioVerifier> has copy, drop, store {
+public struct Audio<phantom AudioVerifier> has key {
+    id: UID,
+    sample_rate_hz: u32,
     channels: u8,
     bit_depth: u8,
-    sample_rate_hz: u32,
     samples_per_channel: u64,
     pcm_digest: vector<u8>,
-    blob: WalrusBlob,
 }
+
+public struct AudioRegistry has key {
+    id: UID,
+}
+
+public struct AudioKey<phantom AudioVerifier> has copy, drop, store {
+    sample_rate_hz: u32,
+    channels: u8,
+    bit_depth: u8,
+    samples_per_channel: u64,
+    pcm_digest: vector<u8>,
+}
+
+public struct AudioEncodingKey(u256) has copy, drop, store;
 
 // === Events ===
 
 public struct AudioCreatedEvent<phantom AudioVerifier> has copy, drop {
-    format: String,
+    audio_id: ID,
+    sample_rate_hz: u32,
     channels: u8,
     bit_depth: u8,
-    sample_rate_hz: u32,
     samples_per_channel: u64,
     pcm_digest: vector<u8>,
+}
+
+public struct AudioEncodingAddedEvent<phantom AudioVerifier> has copy, drop {
+    audio_id: ID,
     blob_id: u256,
+}
+
+// === Init ===
+
+fun init(ctx: &mut TxContext) {
+    transfer::share_object(AudioRegistry { id: object::new(ctx) });
 }
 
 // === Public Functions ===
 
 public fun new<AudioVerifier: drop>(
+    registry: &mut AudioRegistry,
     _: AudioVerifier,
-    format: String,
+    sample_rate_hz: u32,
     channels: u8,
     bit_depth: u8,
-    sample_rate_hz: u32,
     samples_per_channel: u64,
     pcm_digest: vector<u8>,
-    blob: WalrusBlob,
 ): Audio<AudioVerifier> {
-    let format_bytes = format.as_bytes();
-    assert!(!format_bytes.is_empty(), EEmptyFormat);
-    assert!(format_bytes.length() <= MAX_FORMAT_LENGTH, EFormatTooLong);
-    assert!(
-        format_bytes.all!(|c| (*c >= 0x61 && *c <= 0x7a) || (*c >= 0x30 && *c <= 0x39)),
-        EInvalidFormatChar,
-    );
-    assert!(!blob.blob_confidentiality().is_encrypted(), EEncryptedBlob);
+    assert!(sample_rate_hz > 0, EInvalidSampleRate);
     assert!(channels > 0, EInvalidChannels);
     assert!(bit_depth > 0 && bit_depth <= MAX_BIT_DEPTH, EInvalidBitDepth);
-    assert!(sample_rate_hz > 0, EInvalidSampleRate);
     assert!(samples_per_channel > 0, EInvalidSamplesPerChannel);
     assert!(
         ((samples_per_channel as u128) * 1_000 / (sample_rate_hz as u128)).try_as_u64().is_some(),
         EInvalidDuration,
     );
     assert!(pcm_digest.length() == PCM_DIGEST_LENGTH, EInvalidDigestLength);
+    let key = AudioKey<AudioVerifier> {
+        sample_rate_hz,
+        channels,
+        bit_depth,
+        samples_per_channel,
+        pcm_digest,
+    };
+    assert!(!derived_object::exists(&registry.id, key), EAudioExists);
+    let id = derived_object::claim(&mut registry.id, key);
     emit(AudioCreatedEvent<AudioVerifier> {
-        format,
+        audio_id: id.to_inner(),
+        sample_rate_hz,
         channels,
         bit_depth,
-        sample_rate_hz,
         samples_per_channel,
         pcm_digest,
-        blob_id: blob.blob_id(),
     });
-    Audio {
-        channels,
-        bit_depth,
-        sample_rate_hz,
-        samples_per_channel,
-        pcm_digest,
-        blob,
-    }
+    Audio { id, sample_rate_hz, channels, bit_depth, samples_per_channel, pcm_digest }
+}
+
+public fun add_encoding<AudioVerifier: drop>(
+    audio: &mut Audio<AudioVerifier>,
+    _: AudioVerifier,
+    blob_id: u256,
+) {
+    let key = AudioEncodingKey(blob_id);
+    if (dynamic_field::exists(&audio.id, key)) return;
+    dynamic_field::add(&mut audio.id, key, true);
+    emit(AudioEncodingAddedEvent<AudioVerifier> { audio_id: audio.id.to_inner(), blob_id });
+}
+
+public fun share<AudioVerifier>(audio: Audio<AudioVerifier>) {
+    transfer::share_object(audio);
 }
 
 // === View Functions ===
 
-public fun channels<AudioVerifier>(self: &Audio<AudioVerifier>): u8 {
-    self.channels
+public fun sample_rate_hz<AudioVerifier>(audio: &Audio<AudioVerifier>): u32 {
+    audio.sample_rate_hz
 }
 
-public fun bit_depth<AudioVerifier>(self: &Audio<AudioVerifier>): u8 {
-    self.bit_depth
+public fun channels<AudioVerifier>(audio: &Audio<AudioVerifier>): u8 {
+    audio.channels
 }
 
-public fun sample_rate_hz<AudioVerifier>(self: &Audio<AudioVerifier>): u32 {
-    self.sample_rate_hz
+public fun bit_depth<AudioVerifier>(audio: &Audio<AudioVerifier>): u8 {
+    audio.bit_depth
 }
 
-public fun samples_per_channel<AudioVerifier>(self: &Audio<AudioVerifier>): u64 {
-    self.samples_per_channel
+public fun samples_per_channel<AudioVerifier>(audio: &Audio<AudioVerifier>): u64 {
+    audio.samples_per_channel
 }
 
-public fun pcm_digest<AudioVerifier>(self: &Audio<AudioVerifier>): &vector<u8> {
-    &self.pcm_digest
+public fun pcm_digest<AudioVerifier>(audio: &Audio<AudioVerifier>): &vector<u8> {
+    &audio.pcm_digest
 }
 
-public fun blob<AudioVerifier>(self: &Audio<AudioVerifier>): &WalrusBlob {
-    &self.blob
+public fun duration_ms<AudioVerifier>(audio: &Audio<AudioVerifier>): u64 {
+    audio.samples_per_channel.mul_div(1_000, audio.sample_rate_hz as u64)
 }
 
-public fun duration_ms<AudioVerifier>(self: &Audio<AudioVerifier>): u64 {
-    self.samples_per_channel.mul_div(1_000, self.sample_rate_hz as u64)
+public fun has_encoding<AudioVerifier>(audio: &Audio<AudioVerifier>, blob_id: u256): bool {
+    dynamic_field::exists(&audio.id, AudioEncodingKey(blob_id))
+}
+
+public fun encoding<AudioVerifier>(audio: &Audio<AudioVerifier>, blob_id: u256): WalrusBlob {
+    assert!(audio.has_encoding(blob_id), ENoEncoding);
+    data::new_blob(blob_id, confidentiality::new_unencrypted())
+}
+
+public fun derive_address<AudioVerifier>(
+    registry_id: ID,
+    sample_rate_hz: u32,
+    channels: u8,
+    bit_depth: u8,
+    samples_per_channel: u64,
+    pcm_digest: vector<u8>,
+): address {
+    derived_object::derive_address(
+        registry_id,
+        AudioKey<AudioVerifier> {
+            sample_rate_hz,
+            channels,
+            bit_depth,
+            samples_per_channel,
+            pcm_digest,
+        },
+    )
 }
 
 // === Test Functions ===
 
 #[test_only]
+public fun init_for_testing(ctx: &mut TxContext) {
+    init(ctx);
+}
+
+#[test_only]
+public fun new_registry_for_testing(ctx: &mut TxContext): AudioRegistry {
+    AudioRegistry { id: object::new(ctx) }
+}
+
+#[test_only]
 public fun audio_created_event_fields<AudioVerifier>(
     event: &AudioCreatedEvent<AudioVerifier>,
-): (String, u8, u8, u32, u64, vector<u8>, u256) {
+): (ID, u32, u8, u8, u64, vector<u8>) {
     (
-        event.format,
+        event.audio_id,
+        event.sample_rate_hz,
         event.channels,
         event.bit_depth,
-        event.sample_rate_hz,
         event.samples_per_channel,
         event.pcm_digest,
-        event.blob_id,
     )
+}
+
+#[test_only]
+public fun audio_encoding_added_event_fields<AudioVerifier>(
+    event: &AudioEncodingAddedEvent<AudioVerifier>,
+): (ID, u256) {
+    (event.audio_id, event.blob_id)
 }
