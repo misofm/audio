@@ -6,7 +6,7 @@ module audio::audio_tests;
 
 use audio::audio::{Self, Audio, AudioRegistry, AudioCreatedEvent};
 use std::unit_test::{assert_eq, destroy};
-use sui::{derived_object, event, test_scenario};
+use sui::{bcs, derived_object, event, test_scenario};
 
 // === Test Types ===
 
@@ -55,6 +55,21 @@ fun with_samples(sample_rate_hz: u32, samples_per_channel: u64): Audio<TestAudio
     let audio = new_audio(&mut registry, 2, 16, sample_rate_hz, samples_per_channel, DIGEST);
     destroy(registry);
     audio
+}
+
+// === Key ===
+
+#[test]
+fun key_bcs_is_the_five_facts_in_order() {
+    let mut expected = bcs::to_bytes(&2u8);
+    expected.append(bcs::to_bytes(&24u8));
+    expected.append(bcs::to_bytes(&48_000u32));
+    expected.append(bcs::to_bytes(&1_000u64));
+    expected.append(bcs::to_bytes(&DIGEST));
+    assert_eq!(
+        audio::audio_key_bytes_for_testing<TestAudioVerifier>(2, 24, 48_000, 1_000, DIGEST),
+        expected,
+    );
 }
 
 // === New ===
@@ -119,7 +134,7 @@ fun new_emits_every_fact_with_the_verifier_type() {
         sample_rate_hz,
         samples_per_channel,
         pcm_digest,
-    ) = audio::audio_created_event_fields(&events[0]);
+    ) = audio::audio_created_fields_for_testing(&events[0]);
     assert_eq!(audio_id, object::id(&audio));
     assert_eq!(channels, 6);
     assert_eq!(bit_depth, 20);
@@ -233,13 +248,13 @@ fun registering_the_same_facts_twice_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = audio::EInvalidSampleRate)]
+#[test, expected_failure(abort_code = audio::EZeroSampleRate)]
 fun zero_sample_rate_is_rejected() {
     let _audio = with_samples(0, 441_000);
     abort
 }
 
-#[test, expected_failure(abort_code = audio::EInvalidChannels)]
+#[test, expected_failure(abort_code = audio::EZeroChannels)]
 fun zero_channels_are_rejected() {
     let mut registry = audio::new_registry_for_testing(&mut tx_context::dummy());
     let _audio = new_audio(&mut registry, 0, 16, 44_100, 441_000, DIGEST);
@@ -258,7 +273,7 @@ fun bit_depth_above_32_is_rejected() {
     abort
 }
 
-#[test, expected_failure(abort_code = audio::EInvalidSamplesPerChannel)]
+#[test, expected_failure(abort_code = audio::EZeroSamplesPerChannel)]
 fun zero_samples_per_channel_are_rejected() {
     let _audio = with_samples(44_100, 0);
     abort

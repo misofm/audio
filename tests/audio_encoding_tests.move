@@ -42,7 +42,9 @@ fun register_encoding_records_the_blob_and_emits_it() {
         AudioEncodingRegisteredEvent<TestAudioVerifier, TestAudioVerifier>,
     >();
     assert_eq!(events.length(), 1);
-    let (audio_id, blob_id) = audio_encoding::audio_encoding_registered_event_fields(&events[0]);
+    let (audio_id, blob_id) = audio_encoding::audio_encoding_registered_fields_for_testing(
+        &events[0],
+    );
     assert_eq!(audio_id, object::id(&audio));
     assert_eq!(blob_id, BLOB_ID);
     destroy(audio);
@@ -86,7 +88,7 @@ fun one_audio_holds_many_encodings() {
     destroy(registry);
 }
 
-#[test, expected_failure(abort_code = audio_encoding::EAlreadyRegistered)]
+#[test, expected_failure(abort_code = audio_encoding::EEncodingAlreadyRegistered)]
 fun registering_an_encoding_twice_aborts() {
     let mut registry = audio::new_registry_for_testing(&mut tx_context::dummy());
     let mut audio = stereo(&mut registry);

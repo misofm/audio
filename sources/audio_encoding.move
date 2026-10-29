@@ -4,11 +4,11 @@
 module audio::audio_encoding;
 
 use audio::audio::Audio;
-use sui::{dynamic_field, event::emit};
+use sui::{dynamic_field as df, event::emit};
 
 // === Errors ===
 
-const EAlreadyRegistered: u64 = 0;
+const EEncodingAlreadyRegistered: u64 = 0;
 
 // === Structs ===
 
@@ -34,8 +34,8 @@ public fun register_encoding<AudioVerifier, AudioEncodingVerifier: drop>(
     let audio_id = object::id(audio);
     let uid = audio.uid_mut();
     let key = AudioEncodingKey<AudioEncodingVerifier>(blob_id);
-    assert!(!dynamic_field::exists(uid, key), EAlreadyRegistered);
-    dynamic_field::add(uid, key, true);
+    assert!(!df::exists(uid, key), EEncodingAlreadyRegistered);
+    df::add(uid, key, true);
     emit(AudioEncodingRegisteredEvent<AudioVerifier, AudioEncodingVerifier> { audio_id, blob_id });
 }
 
@@ -45,13 +45,13 @@ public fun has_encoding<AudioVerifier, AudioEncodingVerifier>(
     audio: &Audio<AudioVerifier>,
     blob_id: u256,
 ): bool {
-    dynamic_field::exists(audio.uid(), AudioEncodingKey<AudioEncodingVerifier>(blob_id))
+    df::exists(audio.uid(), AudioEncodingKey<AudioEncodingVerifier>(blob_id))
 }
 
 // === Test Functions ===
 
 #[test_only]
-public fun audio_encoding_registered_event_fields<AudioVerifier, AudioEncodingVerifier>(
+public fun audio_encoding_registered_fields_for_testing<AudioVerifier, AudioEncodingVerifier>(
     event: &AudioEncodingRegisteredEvent<AudioVerifier, AudioEncodingVerifier>,
 ): (ID, u256) {
     (event.audio_id, event.blob_id)

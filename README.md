@@ -27,7 +27,7 @@ public struct Audio<phantom AudioVerifier> has key {
 }
 ```
 
-- **One Audio per verifier and facts.** Each Audio is a derived object of the shared `AudioRegistry`, claimed with the key `AudioKey<AudioVerifier> { channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest }`, in that order: the shape of a frame, then time, then content, the same order as the verifier's signed payload. Its ID is a function of the registry ID, the verifier type and the five facts, so clients holding a file can find its Audio with `derive_address` and plain RPC. The digest alone doesn't commit to how the samples are played, so the same digest with other facts is other audio.
+- **One Audio per verifier and facts.** Each Audio is a derived object of the shared `AudioRegistry`, claimed with the key `AudioKey<AudioVerifier>(channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest)`, in that order: the shape of a frame, then time, then content, the same order as the verifier's signed payload. Its ID is a function of the registry ID, the verifier type and the five facts, so clients holding a file can find its Audio with `derive_address` and plain RPC. The digest alone doesn't commit to how the samples are played, so the same digest with other facts is other audio.
 - **The facts never change.** Audio has no setters. It is shared rather than frozen only so encodings can be registered on it.
 - **Encodings** are the files known to decode to the Audio: a dynamic field `AudioEncodingKey<AudioEncodingVerifier>(blob_id) → true` per unencrypted Walrus blob, identified by its `u256` blob ID, written once and never removed. Measuring audio and matching a file to it are separate claims, so an encoding is vouched for by its own `AudioEncodingVerifier` type. Any encoding verifier can register files on any Audio, but only under its own type; a verifier such as `audio_verifier` passes the same witness as both. Walrus blob IDs are content-addressed, so an expired file can be stored again under the same ID. The file's format is not stored; audio files identify themselves by their first bytes.
 - Audio has only `key`, so it can't be wrapped, transferred or dropped. `new` returns it unshared, so the same transaction can register its first encoding and point records at it, and `share` is the only way to finish with it.
@@ -37,7 +37,7 @@ public struct Audio<phantom AudioVerifier> has key {
 | Function | Gate | What it does |
 |---|---|---|
 | `new<AudioVerifier: drop>(registry, witness, channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest)` | witness | Checks the facts, claims the Audio from the registry and emits `AudioCreatedEvent`. Aborts with `derived_object::EObjectAlreadyExists` if it is already registered. |
-| `audio_encoding::register_encoding<AudioVerifier, AudioEncodingVerifier: drop>(audio, witness, blob_id)` | encoding witness | Registers a blob as an encoding under the witness's type and emits `AudioEncodingRegisteredEvent`. Aborts with `EAlreadyRegistered` if that verifier already registered the blob. |
+| `audio_encoding::register_encoding<AudioVerifier, AudioEncodingVerifier: drop>(audio, witness, blob_id)` | encoding witness | Registers a blob as an encoding under the witness's type and emits `AudioEncodingRegisteredEvent`. Aborts with `EEncodingAlreadyRegistered` if that verifier already registered the blob. |
 | `share<AudioVerifier>(audio)` | none | Shares a new Audio. |
 | `derive_address<AudioVerifier>(registry_id, channels, bit_depth, sample_rate_hz, samples_per_channel, pcm_digest)` | none | The Audio's address for those facts. |
 | `audio_encoding::has_encoding<AudioVerifier, AudioEncodingVerifier>(audio, blob_id)` | none | Whether that encoding verifier registered the blob. |
@@ -48,10 +48,10 @@ Views: `channels`, `bit_depth`, `sample_rate_hz`, `samples_per_channel`, `pcm_di
 
 | Fact | Rule | Error |
 |---|---|---|
-| `channels` | at least 1 | `EInvalidChannels` (0) |
+| `channels` | at least 1 | `EZeroChannels` (0) |
 | `bit_depth` | 1 to 32 | `EInvalidBitDepth` (1) |
-| `sample_rate_hz` | at least 1 | `EInvalidSampleRate` (2) |
-| `samples_per_channel` | at least 1, and the duration in milliseconds fits in a `u64` | `EInvalidSamplesPerChannel` (3), `EInvalidDuration` (4) |
+| `sample_rate_hz` | at least 1 | `EZeroSampleRate` (2) |
+| `samples_per_channel` | at least 1, and the duration in milliseconds fits in a `u64` | `EZeroSamplesPerChannel` (3), `EInvalidDuration` (4) |
 | `pcm_digest` | exactly 32 bytes | `EInvalidDigestLength` (5) |
 
 `new` checks the shape of the facts only. Reading the file and computing the digest is the verifier's job.
