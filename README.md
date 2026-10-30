@@ -1,3 +1,5 @@
+> **Moved.** This repository is archived. Its package now lives in [`misofm/framework`](https://github.com/misofm/framework/tree/main/audio) under `audio/`.
+
 # miso-audio
 
 [![License: FSL-1.1-ALv2](https://img.shields.io/badge/license-FSL--1.1--ALv2-blue.svg)](LICENSE.md)
